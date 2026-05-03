@@ -1,15 +1,36 @@
 import { useState } from 'react';
+import { extractTextFromPDF } from '../utils/pdfReader';
 
 export default function UploadZone({ onFileLoaded }) {
   const [dragging, setDragging] = useState(false);
   const [file, setFile] = useState(null);
+  const [reading, setReading] = useState(false);
 
-  const handleFile = (f) => {
+  const handleFile = async (f) => {
     if (!f) return;
     setFile(f);
-    const reader = new FileReader();
-    reader.onload = (e) => onFileLoaded(f, e.target.result);
-    reader.readAsText(f);
+    setReading(true);
+
+    try {
+      let text = '';
+
+      if (f.type === 'application/pdf') {
+        text = await extractTextFromPDF(f);
+      } else {
+        const reader = new FileReader();
+        text = await new Promise((resolve, reject) => {
+          reader.onload = (e) => resolve(e.target.result);
+          reader.onerror = reject;
+          reader.readAsText(f);
+        });
+      }
+
+      onFileLoaded(f, text);
+    } catch (err) {
+      console.error('File reading error:', err);
+    } finally {
+      setReading(false);
+    }
   };
 
   return (
@@ -38,28 +59,44 @@ export default function UploadZone({ onFileLoaded }) {
           Drop your document here
         </div>
         <div style={{ fontSize: '12px', color: '#475569' }}>
-          TXT, PDF, DOCX — anonymized before leaving your browser
+          TXT or PDF — anonymized before leaving your browser
         </div>
       </div>
 
       <input
         id="file-input"
         type="file"
-        accept=".txt,.pdf,.doc,.docx"
+        accept=".txt,.pdf"
         style={{ display: 'none' }}
         onChange={(e) => handleFile(e.target.files[0])}
       />
 
-      {file && (
+      {reading && (
+        <div style={{
+          marginTop: '10px', padding: '10px',
+          background: '#0d1829', borderRadius: '8px',
+          fontSize: '13px', color: '#60a5fa', textAlign: 'center'
+        }}>
+          ⏳ Reading file...
+        </div>
+      )}
+
+      {file && !reading && (
         <div style={{
           display: 'flex', alignItems: 'center', gap: '10px',
           padding: '10px', background: '#0d1829',
           borderRadius: '8px', marginTop: '10px'
         }}>
-          <span style={{ fontSize: '20px' }}>📄</span>
+          <span style={{ fontSize: '20px' }}>
+            {file.type === 'application/pdf' ? '📕' : '📄'}
+          </span>
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: '13px', color: '#cbd5e1', fontWeight: 500 }}>{file.name}</div>
-            <div style={{ fontSize: '11px', color: '#475569' }}>{(file.size / 1024).toFixed(1)} KB</div>
+            <div style={{ fontSize: '13px', color: '#cbd5e1', fontWeight: 500 }}>
+              {file.name}
+            </div>
+            <div style={{ fontSize: '11px', color: '#475569' }}>
+              {(file.size / 1024).toFixed(1)} KB
+            </div>
           </div>
           <span style={{
             fontSize: '11px', color: '#34d399',
