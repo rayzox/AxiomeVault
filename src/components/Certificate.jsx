@@ -1,25 +1,26 @@
-export default function Certificate({ hash, anonCount, proofUrl, timestamp }) {
-  const handleDownload = async () => {
-    const { jsPDF } = await import("https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js");
-    const doc = new jsPDF({ unit: "pt", format: "a4" });
+import { jsPDF } from "jspdf";
 
+export default function Certificate({ hash, anonCount, proofUrl, timestamp }) {
+  const handleDownload = () => {
+    const doc = new jsPDF({ unit: "pt", format: "a4" });
     const W = doc.internal.pageSize.getWidth();
+    const H = doc.internal.pageSize.getHeight();
     const pad = 40;
 
     // Background
     doc.setFillColor(13, 24, 41);
-    doc.rect(0, 0, W, doc.internal.pageSize.getHeight(), "F");
+    doc.rect(0, 0, W, H, "F");
 
     // Border
     doc.setDrawColor(30, 58, 95);
     doc.setLineWidth(1.5);
-    doc.roundedRect(pad, pad, W - pad * 2, 260, 8, 8, "S");
+    doc.roundedRect(pad, pad, W - pad * 2, 240, 8, 8, "S");
 
     // Title
     doc.setFont("helvetica", "bold");
     doc.setFontSize(16);
     doc.setTextColor(96, 165, 250);
-    doc.text("🏅 Trust Certificate", pad + 20, pad + 36);
+    doc.text("Trust Certificate", pad + 20, pad + 36);
 
     // Divider
     doc.setDrawColor(26, 37, 64);
@@ -31,37 +32,39 @@ export default function Certificate({ hash, anonCount, proofUrl, timestamp }) {
       { key: "Anonymized Items", val: `${anonCount} sensitive items replaced` },
       { key: "AI Model", val: "Llama3-8b (Groq)" },
       { key: "Timestamp", val: timestamp },
-      { key: "Status", val: "✅ VERIFIED" },
+      { key: "Status", val: "VERIFIED" },
       { key: "Blockchain Proof", val: proofUrl },
     ];
 
-    let y = pad + 70;
-    rows.forEach(({ key, val, }) => {
+    let y = pad + 72;
+    rows.forEach(({ key, val }) => {
+      // Key
       doc.setFont("helvetica", "normal");
       doc.setFontSize(10);
       doc.setTextColor(71, 85, 105);
       doc.text(key, pad + 20, y);
 
+      // Value
       doc.setFont("courier", "normal");
       doc.setFontSize(9);
-      doc.setTextColor(key === "Status" ? 52 : 148, key === "Status" ? 211 : 163, key === "Status" ? 153 : 184);
+      const isStatus = key === "Status";
+      doc.setTextColor(
+        isStatus ? 52 : 148,
+        isStatus ? 211 : 163,
+        isStatus ? 153 : 184
+      );
       doc.text(val, W - pad - 20, y, { align: "right", maxWidth: 240 });
 
+      // Row divider
       doc.setDrawColor(26, 37, 64);
-      doc.line(pad + 20, y + 8, W - pad - 20, y + 8);
-      y += 32;
+      doc.setLineWidth(0.4);
+      doc.line(pad + 20, y + 10, W - pad - 20, y + 10);
+
+      y += 34;
     });
 
     doc.save("trust-certificate.pdf");
   };
-
-  const rows = [
-    { key: "Document Hash", val: hash.substring(0, 20) + "..." },
-    { key: "Anonymized Items", val: `${anonCount} sensitive items replaced` },
-    { key: "AI Model", val: "Llama3-8b (Groq)" },
-    { key: "Timestamp", val: timestamp },
-    { key: "Status", val: "✅ VERIFIED", green: true },
-  ];
 
   return (
     <div style={{
@@ -94,7 +97,13 @@ export default function Certificate({ hash, anonCount, proofUrl, timestamp }) {
         </button>
       </div>
 
-      {rows.map(({ key, val, green }) => (
+      {[
+        { key: "Document Hash", val: hash.substring(0, 20) + "..." },
+        { key: "Anonymized Items", val: `${anonCount} sensitive items replaced` },
+        { key: "AI Model", val: "Llama3-8b (Groq)" },
+        { key: "Timestamp", val: timestamp },
+        { key: "Status", val: "✅ VERIFIED", green: true },
+      ].map(({ key, val, green }) => (
         <div key={key} style={{
           display: "flex", justifyContent: "space-between",
           padding: "6px 0", borderBottom: "1px solid #1a2540",
