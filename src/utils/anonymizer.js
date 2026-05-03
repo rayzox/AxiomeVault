@@ -35,7 +35,7 @@ export const anonymize = (text) => {
     /\b(?:rue|avenue|av\.|bd|boulevard|lot|hay|quartier|n°|no\.?)\s+[^\n,]{3,40}/gi,
     'ADDRESS'
   );
-  
+
     // Street numbers (N°17, No.5, #12 etc)
   replace(/\b[Nn]°\s*\d+|\bNo\.?\s*\d+|#\d+/g, 'STREET_NUM');
 
@@ -56,7 +56,7 @@ export const anonymize = (text) => {
 
   // Age patterns
   replace(/\b\d{1,2}\s*ans\b/gi, 'AGE');
-
+  // hello
   // Named persons (M. / Mme. / Dr.)
   replace(
     /\b(?:M\.|Mr\.|Mme\.|Dr\.)\s+[A-ZÀ-Ÿ][a-zà-ÿ]+(?:\s+[A-ZÀ-Ÿ][a-zà-ÿ]+)*/g,
