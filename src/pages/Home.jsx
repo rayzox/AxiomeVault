@@ -71,7 +71,7 @@ export default function Home() {
           fontSize: '28px', fontWeight: 700,
           background: 'linear-gradient(135deg, #60a5fa, #818cf8)',
           WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent'
-        }}>🔐 AxiomeTrust</div>
+        }}>🔐 AxiomeVault</div>
         <div style={{ fontSize: '13px', color: '#64748b', marginTop: '4px' }}>
           AI document analysis with blockchain-verified privacy
         </div>
