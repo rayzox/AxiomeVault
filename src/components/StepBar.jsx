@@ -1,12 +1,12 @@
-const steps = [
-  { id: 1, icon: '📄', label: 'Upload' },
-  { id: 2, icon: '🔍', label: 'Anonymize' },
-  { id: 3, icon: '⛓️', label: 'Blockchain' },
-  { id: 4, icon: '🤖', label: 'AI Analyze' },
-  { id: 5, icon: '✅', label: 'Certificate' },
-];
+export default function StepBar({ currentStep, t }) {
+  const steps = [
+    { id: 1, icon: '📄', label: t.steps.upload },
+    { id: 2, icon: '🔍', label: t.steps.anonymize },
+    { id: 3, icon: '⛓️', label: t.steps.blockchain },
+    { id: 4, icon: '🤖', label: t.steps.aiAnalyze },
+    { id: 5, icon: '✅', label: t.steps.certificate },
+  ];
 
-export default function StepBar({ currentStep }) {
   return (
     <div style={{
       display: 'flex',
@@ -18,6 +18,7 @@ export default function StepBar({ currentStep }) {
       {steps.map((step) => {
         const isDone = currentStep > step.id;
         const isActive = currentStep === step.id;
+
         return (
           <div key={step.id} style={{
             flex: 1,
