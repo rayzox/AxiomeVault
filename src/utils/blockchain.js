@@ -1,24 +1,19 @@
-import { ethers } from 'ethers';
-
-const CONTRACT_ADDRESS = import.meta.env.VITE_CONTRACT_ADDRESS;
-const PRIVATE_KEY = import.meta.env.VITE_WALLET_KEY;
-const RPC_URL = import.meta.env.VITE_RPC_URL;
-
-const ABI = [
-  "function logDocument(string memory _hash, string memory _action) public",
-];
-
 export const logToBlockchain = async (hash) => {
   try {
-    const provider = new ethers.JsonRpcProvider(RPC_URL);
-    const wallet = new ethers.Wallet(PRIVATE_KEY, provider);
-    const contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, wallet);
-    const tx = await contract.logDocument(hash, 'ANALYZED');
-    await tx.wait();
+    const response = await fetch('/api/log-document', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ hash })
+    });
+
+    const data = await response.json();
+
+    if (!data.success) throw new Error(data.error);
+
     return {
       success: true,
-      txHash: tx.hash,
-      proofUrl: `https://sepolia.etherscan.io/tx/${tx.hash}`
+      txHash: data.txHash,
+      proofUrl: data.proofUrl
     };
   } catch (err) {
     console.error('Blockchain error:', err);
