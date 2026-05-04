@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { extractTextFromPDF } from '../utils/pdfReader';
 
-export default function UploadZone({ onFileLoaded }) {
+export default function UploadZone({ onFileLoaded, t }) {
   const [dragging, setDragging] = useState(false);
   const [file, setFile] = useState(null);
   const [reading, setReading] = useState(false);
@@ -56,10 +56,10 @@ export default function UploadZone({ onFileLoaded }) {
       >
         <div style={{ fontSize: '36px', marginBottom: '10px' }}>📁</div>
         <div style={{ fontSize: '15px', fontWeight: 500, color: '#cbd5e1', marginBottom: '4px' }}>
-          Drop your document here
+          {t.upload.drop}
         </div>
         <div style={{ fontSize: '12px', color: '#475569' }}>
-          TXT or PDF — anonymized before leaving your browser
+          {t.upload.hint}
         </div>
       </div>
 
@@ -77,7 +77,7 @@ export default function UploadZone({ onFileLoaded }) {
           background: '#0d1829', borderRadius: '8px',
           fontSize: '13px', color: '#60a5fa', textAlign: 'center'
         }}>
-          ⏳ Reading file...
+         {t.upload.reading}
         </div>
       )}
 
@@ -102,7 +102,7 @@ export default function UploadZone({ onFileLoaded }) {
             fontSize: '11px', color: '#34d399',
             background: '#0a2318', padding: '3px 8px',
             borderRadius: '6px', border: '1px solid #134e2a'
-          }}>🔒 Local only</span>
+          }}>{t.upload.localOnly}</span>
         </div>
       )}
     </div>
