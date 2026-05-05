@@ -10,10 +10,8 @@ export default function UploadZone({ onFileLoaded, t }) {
     if (!f) return;
     setFile(f);
     setReading(true);
-
     try {
       let text = '';
-
       if (f.type === 'application/pdf') {
         text = await extractTextFromPDF(f);
       } else {
@@ -24,7 +22,6 @@ export default function UploadZone({ onFileLoaded, t }) {
           reader.readAsText(f);
         });
       }
-
       onFileLoaded(f, text);
     } catch (err) {
       console.error('File reading error:', err);
@@ -35,76 +32,117 @@ export default function UploadZone({ onFileLoaded, t }) {
 
   return (
     <div>
+      {/* Drop zone */}
       <div
         onClick={() => document.getElementById('file-input').click()}
         onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
         onDragLeave={() => setDragging(false)}
-        onDrop={(e) => {
-          e.preventDefault();
-          setDragging(false);
-          handleFile(e.dataTransfer.files[0]);
-        }}
+        onDrop={(e) => { e.preventDefault(); setDragging(false); handleFile(e.dataTransfer.files[0]); }}
         style={{
-          border: `2px dashed ${dragging ? '#3b82f6' : '#1e3a5f'}`,
-          borderRadius: '12px',
+          border: `2px dashed ${dragging ? '#3b82f6' : 'rgba(96,165,250,0.2)'}`,
+          borderRadius: 14,
           padding: '2.5rem 1rem',
           textAlign: 'center',
           cursor: 'pointer',
-          background: dragging ? '#0d1e35' : '#0d1829',
-          transition: 'all 0.2s'
+          background: dragging ? 'rgba(29,78,216,0.08)' : 'rgba(96,165,250,0.03)',
+          transition: 'all 0.2s',
+          position: 'relative',
+          overflow: 'hidden',
         }}
+        onMouseEnter={e => { if (!dragging) e.currentTarget.style.borderColor = 'rgba(96,165,250,0.4)'; }}
+        onMouseLeave={e => { if (!dragging) e.currentTarget.style.borderColor = 'rgba(96,165,250,0.2)'; }}
       >
-        <div style={{ fontSize: '36px', marginBottom: '10px' }}>📁</div>
-        <div style={{ fontSize: '15px', fontWeight: 500, color: '#cbd5e1', marginBottom: '4px' }}>
+        {/* Upload icon */}
+        <div style={{
+          width: 52, height: 52, borderRadius: 14, margin: '0 auto 14px',
+          background: 'rgba(96,165,250,0.08)',
+          border: '1px solid rgba(96,165,250,0.18)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: 22,
+        }}>📁</div>
+
+        <div style={{ fontSize: 15, fontWeight: 600, color: '#cbd5e1', marginBottom: 5 }}>
           {t.upload.drop}
         </div>
-        <div style={{ fontSize: '12px', color: '#475569' }}>
+        <div style={{ fontSize: 12, color: 'rgba(100,116,139,0.8)' }}>
           {t.upload.hint}
+        </div>
+
+        {/* Local only badge */}
+        <div style={{
+          position: 'absolute', top: 12, right: 12,
+          fontSize: 10, color: '#34d399',
+          background: 'rgba(10,35,24,0.8)',
+          padding: '3px 9px', borderRadius: 6,
+          border: '1px solid rgba(52,211,153,0.2)',
+          letterSpacing: '0.04em', fontWeight: 600,
+        }}>
+          {t.upload.localOnly}
         </div>
       </div>
 
       <input
-        id="file-input"
-        type="file"
-        accept=".txt,.pdf"
+        id="file-input" type="file" accept=".txt,.pdf"
         style={{ display: 'none' }}
         onChange={(e) => handleFile(e.target.files[0])}
       />
 
+      {/* Reading state */}
       {reading && (
         <div style={{
-          marginTop: '10px', padding: '10px',
-          background: '#0d1829', borderRadius: '8px',
-          fontSize: '13px', color: '#60a5fa', textAlign: 'center'
+          marginTop: 10, padding: '10px 14px',
+          background: 'rgba(96,165,250,0.06)',
+          borderRadius: 10, fontSize: 13,
+          color: '#60a5fa', textAlign: 'center',
+          border: '1px solid rgba(96,165,250,0.15)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
         }}>
-         {t.upload.reading}
+          <LoadingDots /> {t.upload.reading}
         </div>
       )}
 
+      {/* File info */}
       {file && !reading && (
         <div style={{
-          display: 'flex', alignItems: 'center', gap: '10px',
-          padding: '10px', background: '#0d1829',
-          borderRadius: '8px', marginTop: '10px'
+          display: 'flex', alignItems: 'center', gap: 12,
+          padding: '10px 14px',
+          background: 'rgba(255,255,255,0.03)',
+          border: '1px solid rgba(255,255,255,0.07)',
+          borderRadius: 10, marginTop: 10,
         }}>
-          <span style={{ fontSize: '20px' }}>
+          <span style={{ fontSize: 20, flexShrink: 0 }}>
             {file.type === 'application/pdf' ? '📕' : '📄'}
           </span>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: '13px', color: '#cbd5e1', fontWeight: 500 }}>
-              {file.name}
-            </div>
-            <div style={{ fontSize: '11px', color: '#475569' }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{
+              fontSize: 13, color: '#cbd5e1', fontWeight: 500,
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>{file.name}</div>
+            <div style={{ fontSize: 11, color: '#475569' }}>
               {(file.size / 1024).toFixed(1)} KB
             </div>
           </div>
-          <span style={{
-            fontSize: '11px', color: '#34d399',
-            background: '#0a2318', padding: '3px 8px',
-            borderRadius: '6px', border: '1px solid #134e2a'
-          }}>{t.upload.localOnly}</span>
+          <div style={{
+            width: 8, height: 8, borderRadius: '50%',
+            background: '#34d399', flexShrink: 0,
+          }} />
         </div>
       )}
     </div>
+  );
+}
+
+function LoadingDots() {
+  return (
+    <span style={{ display: 'inline-flex', gap: 3 }}>
+      {[0, 1, 2].map(i => (
+        <span key={i} style={{
+          width: 4, height: 4, borderRadius: '50%', background: '#60a5fa',
+          display: 'inline-block',
+          animation: `dotBounce 1.2s ${i * 0.2}s ease-in-out infinite`,
+        }} />
+      ))}
+      <style>{'@keyframes dotBounce{0%,80%,100%{transform:scale(0.6);opacity:0.4}40%{transform:scale(1);opacity:1}}'}</style>
+    </span>
   );
 }
