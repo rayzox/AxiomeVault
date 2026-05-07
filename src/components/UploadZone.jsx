@@ -31,11 +31,7 @@ export default function UploadZone({ onFileLoaded, onError, t }) {
     try {
       let text = '';
 
-<<<<<<< HEAD
-      if (f.type === 'application/pdf') {
-=======
       if (isPdf) {
->>>>>>> 05b97ff (Improve error handling without changing blockchain module)
         text = await extractTextFromPDF(f);
       } else {
         const reader = new FileReader();
@@ -48,8 +44,6 @@ export default function UploadZone({ onFileLoaded, onError, t }) {
         });
       }
 
-<<<<<<< HEAD
-=======
       if (!text || !text.trim()) {
         const emptyError = new Error(
           'The selected document is empty or does not contain readable text.'
@@ -61,7 +55,6 @@ export default function UploadZone({ onFileLoaded, onError, t }) {
         return;
       }
 
->>>>>>> 05b97ff (Improve error handling without changing blockchain module)
       onFileLoaded(f, text);
     } catch (err) {
       console.error('File reading error:', err);
@@ -87,24 +80,6 @@ export default function UploadZone({ onFileLoaded, onError, t }) {
           handleFile(e.dataTransfer.files[0]);
         }}
         style={{
-<<<<<<< HEAD
-          border: `2px dashed ${dragging ? '#3b82f6' : '#1e3a5f'}`,
-          borderRadius: '12px',
-          padding: '2.5rem 1rem',
-          textAlign: 'center',
-          cursor: 'pointer',
-          background: dragging ? '#0d1e35' : '#0d1829',
-          transition: 'all 0.2s'
-        }}
-      >
-        <div style={{ fontSize: '36px', marginBottom: '10px' }}>📁</div>
-        <div style={{ fontSize: '15px', fontWeight: 500, color: '#cbd5e1', marginBottom: '4px' }}>
-          {t.upload.drop}
-        </div>
-        <div style={{ fontSize: '12px', color: '#475569' }}>
-          {t.upload.hint}
-        </div>
-=======
           border: `2px dashed ${
             dragging ? '#3b82f6' : 'rgba(96,165,250,0.2)'
           }`,
@@ -130,7 +105,6 @@ export default function UploadZone({ onFileLoaded, onError, t }) {
           }
         }}
       >
-        {/* Upload icon */}
         <div
           style={{
             width: 52,
@@ -168,7 +142,6 @@ export default function UploadZone({ onFileLoaded, onError, t }) {
           {t.upload.hint}
         </div>
 
-        {/* Local only badge */}
         <div
           style={{
             position: 'absolute',
@@ -186,7 +159,6 @@ export default function UploadZone({ onFileLoaded, onError, t }) {
         >
           {t.upload.localOnly}
         </div>
->>>>>>> 05b97ff (Improve error handling without changing blockchain module)
       </div>
 
       <input
@@ -198,14 +170,6 @@ export default function UploadZone({ onFileLoaded, onError, t }) {
       />
 
       {reading && (
-<<<<<<< HEAD
-        <div style={{
-          marginTop: '10px', padding: '10px',
-          background: '#0d1829', borderRadius: '8px',
-          fontSize: '13px', color: '#60a5fa', textAlign: 'center'
-        }}>
-         {t.upload.reading}
-=======
         <div
           style={{
             marginTop: 10,
@@ -223,34 +187,10 @@ export default function UploadZone({ onFileLoaded, onError, t }) {
           }}
         >
           <LoadingDots /> {t.upload.reading}
->>>>>>> 05b97ff (Improve error handling without changing blockchain module)
         </div>
       )}
 
       {file && !reading && (
-<<<<<<< HEAD
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: '10px',
-          padding: '10px', background: '#0d1829',
-          borderRadius: '8px', marginTop: '10px'
-        }}>
-          <span style={{ fontSize: '20px' }}>
-            {file.type === 'application/pdf' ? '📕' : '📄'}
-          </span>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: '13px', color: '#cbd5e1', fontWeight: 500 }}>
-              {file.name}
-            </div>
-            <div style={{ fontSize: '11px', color: '#475569' }}>
-              {(file.size / 1024).toFixed(1)} KB
-            </div>
-          </div>
-          <span style={{
-            fontSize: '11px', color: '#34d399',
-            background: '#0a2318', padding: '3px 8px',
-            borderRadius: '6px', border: '1px solid #134e2a'
-          }}>{t.upload.localOnly}</span>
-=======
         <div
           style={{
             display: 'flex',
@@ -295,13 +235,10 @@ export default function UploadZone({ onFileLoaded, onError, t }) {
               flexShrink: 0,
             }}
           />
->>>>>>> 05b97ff (Improve error handling without changing blockchain module)
         </div>
       )}
     </div>
   );
-<<<<<<< HEAD
-=======
 }
 
 function LoadingDots() {
@@ -328,5 +265,4 @@ function LoadingDots() {
       </style>
     </span>
   );
->>>>>>> 05b97ff (Improve error handling without changing blockchain module)
 }
