@@ -3,7 +3,7 @@ import StepBar from '../components/StepBar';
 import UploadZone from '../components/UploadZone';
 import Certificate from '../components/Certificate';
 import LanguageToggle from '../components/LanguageToggle';
-import { anonymize } from '../utils/anonymizer';
+import { nerAnonymize as anonymize } from '../utils/nerAnonymizer';
 import { hashDocument } from '../utils/hasher';
 import { analyzeDocument } from '../utils/ai';
 import { logToBlockchain } from '../utils/blockchain';
