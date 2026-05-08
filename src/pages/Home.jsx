@@ -3,11 +3,23 @@ import StepBar from '../components/StepBar';
 import UploadZone from '../components/UploadZone';
 import Certificate from '../components/Certificate';
 import LanguageToggle from '../components/LanguageToggle';
-import { nerAnonymize as anonymize } from '../utils/nerAnonymizer';
+import { nerAnonymize as anonymize, getRedactionSummary } from '../utils/nerAnonymizer';
 import { hashDocument } from '../utils/hasher';
 import { analyzeDocument } from '../utils/ai';
 import { logToBlockchain } from '../utils/blockchain';
 import { createAppError } from '../utils/errorHandler';
+
+const ENTITY_CONFIG = {
+  PERSON:     { name: 'Names',        icon: '👤', color: '#f472b6', bg: 'rgba(244,114,182,0.1)' },
+  LOCATION:   { name: 'Locations',    icon: '📍', color: '#34d399', bg: 'rgba(52,211,153,0.1)' },
+  ORG:        { name: 'Organizations',icon: '🏢', color: '#a78bfa', bg: 'rgba(167,139,250,0.1)' },
+  DATE:       { name: 'Dates',        icon: '📅', color: '#fbbf24', bg: 'rgba(251,191,36,0.1)' },
+  AMOUNT:     { name: 'Amounts',      icon: '💰', color: '#f87171', bg: 'rgba(248,113,113,0.1)' },
+  EMAIL:      { name: 'Emails',       icon: '✉️', color: '#60a5fa', bg: 'rgba(96,165,250,0.1)' },
+  PHONE:      { name: 'Phones',       icon: '📞', color: '#2dd4bf', bg: 'rgba(45,212,191,0.1)' },
+  CIN:        { name: 'ID Numbers',   icon: '🆔', color: '#fb923c', bg: 'rgba(251,146,60,0.1)' },
+  ADDRESS:    { name: 'Addresses',    icon: '🏠', color: '#a3e635', bg: 'rgba(163,230,53,0.1)' },
+};
 
 export default function Home({ lang, t, onLanguageChange }) {
   const [step, setStep] = useState(0);
@@ -43,8 +55,8 @@ export default function Home({ lang, t, onLanguageChange }) {
     try {
       currentPhase = 'anonymization';
       setStep(2);
-      const { anonymized, count } = anonymize(fileContent);
-
+      const { anonymized, count, spans } = anonymize(fileContent);
+      const summary = getRedactionSummary(spans);
       currentPhase = 'hashing';
       const hash = await hashDocument(fileContent);
 
@@ -71,6 +83,7 @@ export default function Home({ lang, t, onLanguageChange }) {
         proofUrl,
         anonCount: count,
         anonymized,
+        spans,
         timestamp: new Date().toLocaleString(
           lang === 'ar' ? 'ar-MA' : lang === 'fr' ? 'fr-MA' : 'en-US'
         ),
@@ -165,8 +178,8 @@ export default function Home({ lang, t, onLanguageChange }) {
     lang === 'ar'
       ? 'التفاصيل التقنية'
       : lang === 'fr'
-      ? 'Détails techniques'
-      : 'Technical details';
+        ? 'Détails techniques'
+        : 'Technical details';
 
   return (
     <div
@@ -277,8 +290,8 @@ export default function Home({ lang, t, onLanguageChange }) {
             {lang === 'ar'
               ? 'خصوصية أولاً · موثق بالبلوكشين'
               : lang === 'fr'
-              ? "Confidentialité d'abord · Vérifié blockchain"
-              : 'Privacy-First · Blockchain-Verified'}
+                ? "Confidentialité d'abord · Vérifié blockchain"
+                : 'Privacy-First · Blockchain-Verified'}
           </div>
 
           <h1
@@ -296,8 +309,8 @@ export default function Home({ lang, t, onLanguageChange }) {
             {lang === 'ar'
               ? 'حلل مستندك بأمان'
               : lang === 'fr'
-              ? 'Analysez votre document'
-              : 'Analyze Your Document'}
+                ? 'Analysez votre document'
+                : 'Analyze Your Document'}
           </h1>
 
           <p
@@ -453,6 +466,120 @@ export default function Home({ lang, t, onLanguageChange }) {
               >
                 {result.anonymized.substring(0, 300)}...
               </div>
+
+              {/* ADD THIS BLOCK */}
+              {result.spans && result.spans.length > 0 && (
+                <div style={{ marginTop: 12 }}>
+                  <div
+                    style={{
+                      fontSize: 11,
+                      color: '#64748b',
+                      fontWeight: 600,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.08em',
+                      marginBottom: 8,
+                    }}
+                  >
+                    {lang === 'ar'
+                      ? 'البيانات التي تم حمايتها'
+                      : lang === 'fr'
+                        ? 'Données protégées'
+                        : 'Protected data'}
+                  </div>
+
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {Object.entries(getRedactionSummary(result.spans)).map(([label, num]) => {
+                      const config = ENTITY_CONFIG[label] || { icon: '🔒', color: '#93c5fd', bg: 'rgba(96,165,250,0.1)' };
+                      return (
+                        <span
+                          key={label}
+                          style={{
+                            fontSize: 12,
+                            padding: '4px 12px',
+                            borderRadius: 8,
+                            background: config.bg,
+                            border: `1px solid ${config.color}33`,
+                            color: config.color,
+                            fontWeight: 600,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 6,
+                          }}
+                        >
+                          <span>{config.icon}</span>
+                          <span>
+                            {num} {config.name || label}
+                          </span>
+                        </span>
+                      );
+                    })}
+                  </div>
+
+                  <details style={{ marginTop: 10 }}>
+                    <summary
+                      style={{
+                        fontSize: 11,
+                        color: '#475569',
+                        cursor: 'pointer',
+                        userSelect: 'none',
+                      }}
+                    >
+                      {lang === 'ar'
+                        ? 'عرض التفاصيل'
+                        : lang === 'fr'
+                          ? 'Voir les détails'
+                          : 'View details'}
+                    </summary>
+
+                    <div
+                      style={{
+                        marginTop: 8,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: 4,
+                      }}
+                    >
+                      {result.spans.map((span, idx) => {
+                        const config = ENTITY_CONFIG[span.label] || { icon: '🔒', color: '#93c5fd' };
+                        const preview =
+                          span.text.length > 24 ? span.text.slice(0, 24) + '…' : span.text;
+
+                        return (
+                          <div
+                            key={idx}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              fontSize: 11,
+                              padding: '5px 10px',
+                              borderRadius: 6,
+                              background: 'rgba(255,255,255,0.03)',
+                              direction: 'ltr',
+                              textAlign: 'left',
+                            }}
+                          >
+                            <span style={{ color: '#94a3b8', fontFamily: 'monospace' }}>
+                              {preview}
+                            </span>
+                            <span
+                              style={{
+                                color: config.color,
+                                fontWeight: 600,
+                                fontSize: 10,
+                                textTransform: 'uppercase',
+                                letterSpacing: '0.05em',
+                              }}
+                            >
+                              {config.icon} {span.label}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </details>
+                </div>
+              )}
 
               <div
                 style={{
