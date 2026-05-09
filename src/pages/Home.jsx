@@ -8,6 +8,7 @@ import { hashDocument } from '../utils/hasher';
 import { analyzeDocument } from '../utils/ai';
 import { logToBlockchain } from '../utils/blockchain';
 import { createAppError } from '../utils/errorHandler';
+import RedactionViewer from '../components/RedactionViewer';
 
 const ENTITY_CONFIG = {
   PERSON:     { name: 'Names',        icon: '👤', color: '#f472b6', bg: 'rgba(244,114,182,0.1)' },
@@ -346,21 +347,19 @@ export default function Home({ lang, t, onLanguageChange }) {
           {/* ── Custom Prompt ── */}
           {fileContent && (
             <div style={{ marginTop: 14 }}>
-              <label
-                style={{
-                  display: 'block',
-                  fontSize: 11,
-                  fontWeight: 700,
-                  color: '#475569',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.08em',
-                  marginBottom: 8,
-                }}
-              >
+              <label style={{
+                display: 'block',
+                fontSize: 11,
+                fontWeight: 700,
+                color: '#475569',
+                textTransform: 'uppercase',
+                letterSpacing: '0.08em',
+                marginBottom: 8,
+              }}>
                 {lang === 'ar'
                   ? '✦ طلبك للذكاء الاصطناعي (اختياري)'
                   : lang === 'fr'
-                    ? '✦ Votre instruction pour l\'IA (optionnel)'
+                    ? "✦ Votre instruction pour l'IA (optionnel)"
                     : '✦ Your instruction for the AI (optional)'}
               </label>
               <textarea
@@ -508,6 +507,11 @@ export default function Home({ lang, t, onLanguageChange }) {
 
         {result && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <RedactionViewer
+              originalText={fileContent}
+              spans={result.spans}
+              lang={lang}
+            />
             <ResultCard label={t.results.anonymizationPreview}>
               <div
                 style={{
@@ -710,6 +714,8 @@ export default function Home({ lang, t, onLanguageChange }) {
               anonCount={result.anonCount}
               proofUrl={result.proofUrl}
               timestamp={result.timestamp}
+              analysis={result.analysis}
+              spans={result.spans}
               t={t}
             />
           </div>
