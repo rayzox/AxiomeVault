@@ -8,6 +8,7 @@ import { hashDocument } from '../utils/hasher';
 import { analyzeDocument } from '../utils/ai';
 import { logToBlockchain } from '../utils/blockchain';
 import { createAppError } from '../utils/errorHandler';
+import RedactionViewer from '../components/RedactionViewer';
 
 const ENTITY_CONFIG = {
   PERSON:     { name: 'Names',        icon: '👤', color: '#f472b6', bg: 'rgba(244,114,182,0.1)' },
@@ -27,6 +28,7 @@ export default function Home({ lang, t, onLanguageChange }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [result, setResult] = useState(null);
+  const [userPrompt, setUserPrompt] = useState('');
   const canvasRef = useRef(null);
 
   const handleFileLoaded = (file, content) => {
@@ -74,7 +76,7 @@ export default function Home({ lang, t, onLanguageChange }) {
 
       currentPhase = 'ai';
       setStep(4);
-      const analysis = await analyzeDocument(anonymized, lang);
+      const analysis = await analyzeDocument(anonymized, lang, userPrompt.trim() || null);
 
       setStep(5);
       setResult({
@@ -342,6 +344,63 @@ export default function Home({ lang, t, onLanguageChange }) {
             t={t}
           />
 
+          {/* ── Custom Prompt ── */}
+          {fileContent && (
+            <div style={{ marginTop: 14 }}>
+              <label style={{
+                display: 'block',
+                fontSize: 11,
+                fontWeight: 700,
+                color: '#475569',
+                textTransform: 'uppercase',
+                letterSpacing: '0.08em',
+                marginBottom: 8,
+              }}>
+                {lang === 'ar'
+                  ? '✦ طلبك للذكاء الاصطناعي (اختياري)'
+                  : lang === 'fr'
+                    ? "✦ Votre instruction pour l'IA (optionnel)"
+                    : '✦ Your instruction for the AI (optional)'}
+              </label>
+              <textarea
+                value={userPrompt}
+                onChange={(e) => setUserPrompt(e.target.value)}
+                rows={3}
+                placeholder={
+                  lang === 'ar'
+                    ? 'مثال: ركّز على البنود القانونية وحدد أي مخاطر مالية...'
+                    : lang === 'fr'
+                      ? 'Ex : Concentre-toi sur les clauses juridiques et identifie les risques financiers...'
+                      : 'e.g. Focus on legal clauses and flag any financial risks...'
+                }
+                style={{
+                  width: '100%',
+                  background: 'rgba(0,0,0,0.3)',
+                  border: '1px solid rgba(96,165,250,0.2)',
+                  borderRadius: 10,
+                  padding: '10px 14px',
+                  color: '#e2e8f0',
+                  fontSize: 13,
+                  fontFamily: 'inherit',
+                  lineHeight: 1.6,
+                  resize: 'vertical',
+                  outline: 'none',
+                  transition: 'border-color 0.2s',
+                  direction: lang === 'ar' ? 'rtl' : 'ltr',
+                }}
+                onFocus={(e) => { e.currentTarget.style.borderColor = 'rgba(96,165,250,0.5)'; }}
+                onBlur={(e) => { e.currentTarget.style.borderColor = 'rgba(96,165,250,0.2)'; }}
+              />
+              <p style={{ fontSize: 11, color: '#334155', marginTop: 5 }}>
+                {lang === 'ar'
+                  ? 'اتركه فارغاً للتحليل الافتراضي الشامل.'
+                  : lang === 'fr'
+                    ? 'Laissez vide pour une analyse complète par défaut.'
+                    : 'Leave empty for the default full analysis.'}
+              </p>
+            </div>
+          )}
+
           <button
             onClick={handleProcess}
             disabled={!isReady}
@@ -448,6 +507,11 @@ export default function Home({ lang, t, onLanguageChange }) {
 
         {result && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <RedactionViewer
+              originalText={fileContent}
+              spans={result.spans}
+              lang={lang}
+            />
             <ResultCard label={t.results.anonymizationPreview}>
               <div
                 style={{
@@ -650,6 +714,8 @@ export default function Home({ lang, t, onLanguageChange }) {
               anonCount={result.anonCount}
               proofUrl={result.proofUrl}
               timestamp={result.timestamp}
+              analysis={result.analysis}
+              spans={result.spans}
               t={t}
             />
           </div>

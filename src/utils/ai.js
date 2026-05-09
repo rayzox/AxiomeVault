@@ -1,6 +1,6 @@
 const GROQ_KEY = import.meta.env.VITE_GROQ_KEY;
 
-export const analyzeDocument = async (anonymizedText, lang = 'en') => {
+export const analyzeDocument = async (anonymizedText, lang = 'en', userPrompt = null) => {
   if (!GROQ_KEY) {
     const error = new Error('Missing Groq API key. Check VITE_GROQ_KEY in .env');
     error.code = 'GROQ_KEY_MISSING';
@@ -39,7 +39,11 @@ Respond only in ${outputLanguage}.
 Do not mix languages.
 Keep the answer clear, structured, and professional.
 
-Analyze this document and respond with:
+${userPrompt
+  ? `The user has a specific request — answer it thoroughly using the document below:
+
+"${userPrompt}"`
+  : `Analyze this document and respond with:
 
 📋 DOCUMENT TYPE:
 [type here]
@@ -55,7 +59,7 @@ Analyze this document and respond with:
 
 💡 RECOMMENDATIONS:
 - [rec 1]
-- [rec 2]
+- [rec 2]`}
 
 Document to analyze:
 ${anonymizedText}`,
