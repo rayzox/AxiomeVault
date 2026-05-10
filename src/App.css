@@ -1,3 +1,9 @@
+@media (min-width: 900px) {
+  .axiome-grid {
+    grid-template-columns: 1.2fr 0.8fr !important;
+  }
+}
+
 .counter {
   font-size: 16px;
   padding: 5px 10px;
