@@ -11,8 +11,21 @@ export default async function handler(req, res) {
 
   const { hash } = req.body;
 
-  if (!hash) {
-    return res.status(400).json({ error: 'Hash required' });
+  // Validate hash
+  if (!hash || typeof hash !== 'string') {
+    return res.status(400).json({ error: 'Hash required and must be a string' });
+  }
+  if (!/^[a-f0-9]+$/i.test(hash)) {
+    return res.status(400). json({ error: 'Hash must be hexadecimal' });
+  }
+  if (hash.length > 128) {
+    return res.status(400).json({ error: 'Hash too long' });
+  }
+
+  // Check env vars
+  if (!process.env.RPC_URL || !process.env.WALLET_KEY || !process.env.CONTRACT_ADDRESS) {
+    console.error('Missing blockchain env vars');
+    return res.status(500).json({ error: 'Server configuration error' });
   }
 
   try {
@@ -30,10 +43,13 @@ export default async function handler(req, res) {
     return res.status(200).json({
       success: true,
       txHash: tx.hash,
+      // FIXED: removed the space before ${tx.hash}
       proofUrl: `https://sepolia.etherscan.io/tx/${tx.hash}`
     });
   } catch (err) {
-    console.error(err);
-    return res.status(500).json({ error: err.message });
+    console.error('Blockchain error:', err);
+    return res.status(500).json({ 
+      error: err.reason || err.message || 'Blockchain transaction failed' 
+    });
   }
 }
