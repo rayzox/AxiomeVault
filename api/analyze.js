@@ -36,19 +36,19 @@ ${safeUserPrompt
   ? `The user has a specific request — answer it thoroughly using the document below:\n"${safeUserPrompt}"`
   : `Analyze this document and respond with:
 
-📋 DOCUMENT TYPE:
+DOCUMENT TYPE:
 [type here]
 
-🔍 KEY POINTS:
+KEY POINTS:
 - [point 1]
 - [point 2]
 - [point 3]
 
-⚠️ RISKS IDENTIFIED:
+RISKS IDENTIFIED:
 - [risk 1]
 - [risk 2]
 
-💡 RECOMMENDATIONS:
+RECOMMENDATIONS:
 - [rec 1]
 - [rec 2]`}`;
 
