@@ -1,10 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Shield, FileText, Scissors, Copy, Download, RefreshCw,
-  Upload, AlertTriangle, Sparkles, Lock, Eye, EyeOff,
-  ChevronRight, Globe, Link2, Hash, Calendar, DollarSign,
-  Mail, Phone, CreditCard, Home as HomeIcon, MapPin, Building2,
-  User, Plane, Loader2, ArrowUpDown, X
+  ArrowUpDown, Sparkles, Lock, Eye, EyeOff, Link2, Globe,
+  Loader2, AlertTriangle, Award, ChevronRight, Play, RotateCcw,
+  ScanLine, ArrowLeftRight
 } from 'lucide-react';
 import StepBar from '../components/StepBar';
 import UploadZone from '../components/UploadZone';
@@ -16,24 +15,32 @@ import { hashDocument } from '../utils/hasher';
 import { analyzeDocument } from '../utils/ai';
 import { logToBlockchain } from '../utils/blockchain';
 import { createAppError } from '../utils/errorHandler';
+import { useTypewriter } from '../hooks/useTypewriter';
 
 const ENTITY_CONFIG = {
-  PERSON: { name: 'Names', color: '#f472b6', glow: 'rgba(244,114,182,0.25)', icon: User },
-  LOCATION: { name: 'Locations', color: '#34d399', glow: 'rgba(52,211,153,0.25)', icon: MapPin },
-  ORG: { name: 'Organizations', color: '#a78bfa', glow: 'rgba(167,139,250,0.25)', icon: Building2 },
-  DATE: { name: 'Dates', color: '#fbbf24', glow: 'rgba(251,191,36,0.25)', icon: Calendar },
-  AMOUNT: { name: 'Amounts', color: '#f87171', glow: 'rgba(248,113,113,0.25)', icon: DollarSign },
-  EMAIL: { name: 'Emails', color: '#60a5fa', glow: 'rgba(96,165,250,0.25)', icon: Mail },
-  PHONE: { name: 'Phones', color: '#2dd4bf', glow: 'rgba(45,212,191,0.25)', icon: Phone },
-  CIN: { name: 'ID Numbers', color: '#fb923c', glow: 'rgba(251,146,60,0.25)', icon: Hash },
-  ADDRESS: { name: 'Addresses', color: '#a3e635', glow: 'rgba(163,230,53,0.25)', icon: HomeIcon },
-  PASSPORT: { name: 'Passports', color: '#e879f9', glow: 'rgba(232,121,249,0.25)', icon: Plane },
-  CREDIT: { name: 'Cards', color: '#f43f5e', glow: 'rgba(244,63,94,0.25)', icon: CreditCard },
-  IP: { name: 'IP Addresses', color: '#38bdf8', glow: 'rgba(56,189,248,0.25)', icon: Globe },
-  URL: { name: 'URLs', color: '#818cf8', glow: 'rgba(129,140,248,0.25)', icon: Link2 },
+  PERSON:     { name: 'Names',         color: '#f472b6', bg: 'rgba(244,114,182,0.12)' },
+  LOCATION:   { name: 'Locations',     color: '#34d399', bg: 'rgba(52,211,153,0.12)' },
+  ORG:        { name: 'Organizations', color: '#a78bfa', bg: 'rgba(167,139,250,0.12)' },
+  DATE:       { name: 'Dates',         color: '#fbbf24', bg: 'rgba(251,191,36,0.12)' },
+  AMOUNT:     { name: 'Amounts',       color: '#f87171', bg: 'rgba(248,113,113,0.12)' },
+  EMAIL:      { name: 'Emails',        color: '#60a5fa', bg: 'rgba(96,165,250,0.12)' },
+  PHONE:      { name: 'Phones',        color: '#2dd4bf', bg: 'rgba(45,212,191,0.12)' },
+  CIN:        { name: 'ID Numbers',    color: '#fb923c', bg: 'rgba(251,146,60,0.12)' },
+  ADDRESS:    { name: 'Addresses',     color: '#a3e635', bg: 'rgba(163,230,53,0.12)' },
+  PASSPORT:   { name: 'Passports',     color: '#e879f9', bg: 'rgba(232,121,249,0.12)' },
+  CREDIT:     { name: 'Cards',         color: '#f43f5e', bg: 'rgba(244,63,94,0.12)' },
+  IP:         { name: 'IP Addresses',  color: '#38bdf8', bg: 'rgba(56,189,248,0.12)' },
+  URL:        { name: 'URLs',          color: '#818cf8', bg: 'rgba(129,140,248,0.12)' },
 };
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
+
+const PHASE_LABELS = {
+  anonymization: { en: 'Scanning for sensitive data...', fr: 'Détection des données sensibles...', ar: 'جارٍ البحث عن البيانات الحساسة...' },
+  hashing:       { en: 'Generating SHA-256 fingerprint...', fr: 'Génération de l\'empreinte...', ar: 'جارٍ إنشاء البصمة...' },
+  blockchain:    { en: 'Logging to blockchain...', fr: 'Enregistrement blockchain...', ar: 'جارٍ التسجيل على البلوكشين...' },
+  ai:            { en: 'Llama 3 is analyzing...', fr: 'Llama 3 analyse...', ar: 'جارٍ التحليل...' },
+};
 
 function generateRedactionNarrative(spans, lang) {
   if (!spans?.length) {
@@ -59,11 +66,14 @@ export default function Home({ lang, t, onLanguageChange }) {
   const [fileContent, setFileContent] = useState('');
   const [fileName, setFileName] = useState('');
   const [loading, setLoading] = useState(false);
+  const [currentPhase, setCurrentPhase] = useState('');
   const [error, setError] = useState(null);
   const [result, setResult] = useState(null);
   const [userPrompt, setUserPrompt] = useState('');
   const [docTab, setDocTab] = useState('original');
   const canvasRef = useRef(null);
+
+  const { display: typedAnalysis, done: typingDone } = useTypewriter(result?.analysis, 8, !!result);
 
   const handleFileLoaded = (file, content) => {
     if (file.size > MAX_FILE_SIZE) {
@@ -89,20 +99,23 @@ export default function Home({ lang, t, onLanguageChange }) {
 
   const handleProcess = useCallback(async () => {
     if (!fileContent) return;
-    let currentPhase = 'process';
+    let phase = 'process';
     setLoading(true);
     setError(null);
     setResult(null);
 
     try {
-      currentPhase = 'anonymization';
+      phase = 'anonymization';
+      setCurrentPhase('anonymization');
       setStep(2);
       const { anonymized, count, spans } = anonymize(fileContent);
 
-      currentPhase = 'hashing';
+      phase = 'hashing';
+      setCurrentPhase('hashing');
       const hash = await hashDocument(fileContent);
 
-      currentPhase = 'blockchain';
+      phase = 'blockchain';
+      setCurrentPhase('blockchain');
       setStep(3);
       const blockchainResult = await logToBlockchain(hash);
 
@@ -112,7 +125,8 @@ export default function Home({ lang, t, onLanguageChange }) {
         throw err;
       }
 
-      currentPhase = 'ai';
+      phase = 'ai';
+      setCurrentPhase('ai');
       setStep(4);
       const analysis = await analyzeDocument(anonymized, lang, userPrompt.trim() || null);
 
@@ -130,10 +144,11 @@ export default function Home({ lang, t, onLanguageChange }) {
       });
     } catch (err) {
       console.error('Process error:', err);
-      setError(createAppError(err, lang, currentPhase));
+      setError(createAppError(err, lang, phase));
       setStep(1);
     } finally {
       setLoading(false);
+      setCurrentPhase('');
     }
   }, [fileContent, lang, userPrompt]);
 
@@ -215,7 +230,7 @@ export default function Home({ lang, t, onLanguageChange }) {
 
   const copyRedacted = async () => {
     if (!result?.anonymized) return;
-    try { await navigator.clipboard.writeText(result.anonymized); } catch { }
+    try { await navigator.clipboard.writeText(result.anonymized); } catch {}
   };
 
   const exportReport = () => {
@@ -251,7 +266,7 @@ export default function Home({ lang, t, onLanguageChange }) {
       <canvas ref={canvasRef} style={{ position: 'fixed', inset: 0, zIndex: 0, pointerEvents: 'none' }} />
       <div style={{ position: 'fixed', inset: 0, zIndex: 0, pointerEvents: 'none', background: 'radial-gradient(ellipse 70% 50% at 50% 0%, rgba(30,64,175,0.15) 0%, transparent 70%)' }} />
 
-      {/* ═══ HEADER ═══ */}
+      {/* Header */}
       <div style={{
         position: 'fixed', top: 0, left: 0, right: 0, zIndex: 100,
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -277,7 +292,7 @@ export default function Home({ lang, t, onLanguageChange }) {
         </div>
       </div>
 
-      {/* ═══ MAIN ═══ */}
+      {/* Main */}
       <div style={{ position: 'relative', zIndex: 1, maxWidth: result ? 1200 : 720, margin: '0 auto', padding: '88px clamp(1rem,4vw,2rem) 4rem', transition: 'max-width 0.4s ease' }}>
 
         {/* Hero */}
@@ -319,7 +334,33 @@ export default function Home({ lang, t, onLanguageChange }) {
           </div>
         )}
 
-        <StepBar currentStep={step} t={t} />
+        <StepBar currentStep={step} lang={lang} />
+
+        {/* Security Badges */}
+        {!fileContent && !result && (
+          <div style={{
+            display: 'flex', justifyContent: 'center', gap: 12,
+            flexWrap: 'wrap', marginBottom: 20,
+          }}>
+            {[
+              { icon: <Shield size={13} />, label: 'Client-side' },
+              { icon: <Lock size={13} />, label: 'SHA-256' },
+              { icon: <Globe size={13} />, label: 'On-chain' },
+              { icon: <EyeOff size={13} />, label: 'Zero-knowledge' },
+            ].map((badge, i) => (
+              <div key={i} style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                padding: '5px 12px', borderRadius: 20,
+                background: 'rgba(255,255,255,0.03)',
+                border: '1px solid rgba(255,255,255,0.06)',
+                color: '#475569', fontSize: 11, fontWeight: 500,
+              }}>
+                <span style={{ color: '#60a5fa', display: 'flex', alignItems: 'center' }}>{badge.icon}</span>
+                {badge.label}
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Upload Card */}
         <div className="glow-border" style={{
@@ -427,6 +468,25 @@ export default function Home({ lang, t, onLanguageChange }) {
             </button>
           )}
 
+          {/* Phase Loading */}
+          {loading && currentPhase && (
+            <div className="fade-in" style={{
+              marginTop: 16, padding: '14px 16px',
+              background: 'rgba(96,165,250,0.05)', border: '1px solid rgba(96,165,250,0.15)',
+              borderRadius: 12, display: 'flex', alignItems: 'center', gap: 12,
+            }}>
+              <Loader2 size={18} className="spin" style={{ color: '#60a5fa', flexShrink: 0 }} />
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: '#93c5fd' }}>
+                  {PHASE_LABELS[currentPhase]?.[lang] || 'Processing...'}
+                </div>
+                <div style={{ fontSize: 11, color: '#475569', marginTop: 2 }}>
+                  {lang === 'fr' ? 'Ne fermez pas cette fenêtre' : lang === 'ar' ? 'لا تغلق هذه النافذة' : 'Do not close this window'}
+                </div>
+              </div>
+            </div>
+          )}
+
           {error && (
             <div className="fade-in" style={{ marginTop: 14, padding: '14px 16px', background: 'rgba(127,29,29,0.2)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 12, fontSize: 13, color: '#fca5a5', lineHeight: 1.6, display: 'flex', alignItems: 'flex-start', gap: 10 }}>
               <span style={{ flexShrink: 0, marginTop: 2 }}><AlertTriangle size={16} /></span>
@@ -469,9 +529,10 @@ export default function Home({ lang, t, onLanguageChange }) {
                 <Card label={lang === 'fr' ? 'Document' : lang === 'ar' ? 'المستند' : 'Document'} icon={<FileText size={14} strokeWidth={2.5} />}>
                   <div style={{ display: 'flex', gap: 2, marginBottom: 14, borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: 10 }}>
                     {[
-                      { key: 'original', label: lang === 'fr' ? 'Original' : lang === 'ar' ? 'أصلي' : 'Original', icon: <Eye size={14} /> },
-                      { key: 'redacted', label: lang === 'fr' ? 'Anonymisé' : lang === 'ar' ? 'مُخفى' : 'Redacted', icon: <EyeOff size={14} /> },
-                      { key: 'replay', label: 'Replay', icon: <RefreshCw size={14} /> },
+                      { key: 'original', label: lang === 'fr' ? 'Original' : lang === 'ar' ? 'أصلي' : 'Original', icon: <Eye size={13} /> },
+                      { key: 'redacted', label: lang === 'fr' ? 'Anonymisé' : lang === 'ar' ? 'مُخفى' : 'Redacted', icon: <EyeOff size={13} /> },
+                      { key: 'replay', label: 'Replay', icon: <Play size={13} /> },
+                      { key: 'compare', label: 'Compare', icon: <ArrowLeftRight size={13} /> },
                     ].map((tab) => (
                       <button key={tab.key} onClick={() => setDocTab(tab.key)} style={{
                         fontSize: 12, fontWeight: 600, padding: '6px 14px', borderRadius: 8,
@@ -506,6 +567,20 @@ export default function Home({ lang, t, onLanguageChange }) {
                       </span>
                     )}
                     {docTab === 'replay' && <RedactionViewer originalText={fileContent} spans={result.spans} lang={lang} />}
+                    {docTab === 'compare' && (
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                        <div style={{ background: 'rgba(0,0,0,0.3)', borderRadius: 8, padding: 12 }}>
+                          <div style={{ fontSize: 10, color: '#475569', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8 }}>Original</div>
+                          <OriginalHighlight text={fileContent.slice(0, 400)} spans={result.spans.filter(s => s.start < 400)} />
+                        </div>
+                        <div style={{ background: 'rgba(0,0,0,0.3)', borderRadius: 8, padding: 12 }}>
+                          <div style={{ fontSize: 10, color: '#475569', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8 }}>Redacted</div>
+                          <span style={{ color: '#94a3b8', fontFamily: 'var(--font-mono)', fontSize: 12 }}>
+                            {result.anonymized.slice(0, 400)}
+                          </span>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   <div style={{ marginTop: 14, fontSize: 13, color: '#94a3b8', lineHeight: 1.7, padding: '12px 14px', background: 'rgba(96,165,250,0.03)', borderRadius: 10, borderLeft: '2px solid rgba(96,165,250,0.25)', display: 'flex', alignItems: 'flex-start', gap: 10 }}>
@@ -517,10 +592,9 @@ export default function Home({ lang, t, onLanguageChange }) {
                 <Card label={lang === 'fr' ? 'Données protégées' : lang === 'ar' ? 'البيانات المحمية' : 'Protected Data'} icon={<Lock size={14} strokeWidth={2.5} />}>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
                     {Object.entries(getRedactionSummary(result.spans)).map(([label, num]) => {
-                      const cfg = ENTITY_CONFIG[label] || { name: label, color: '#93c5fd', glow: 'rgba(96,165,250,0.2)', icon: Shield };
-                      const IconComp = cfg.icon;
+                      const cfg = ENTITY_CONFIG[label] || { name: label, color: '#93c5fd', bg: 'rgba(96,165,250,0.1)' };
                       return (
-                        <EntityBadge key={label} label={cfg.name} count={num} color={cfg.color} glow={cfg.glow} icon={<IconComp size={12} strokeWidth={2.5} />} />
+                        <EntityBadge key={label} label={cfg.name} count={num} color={cfg.color} bg={cfg.bg} />
                       );
                     })}
                   </div>
@@ -531,8 +605,7 @@ export default function Home({ lang, t, onLanguageChange }) {
                     </summary>
                     <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 5 }}>
                       {result.spans.map((span, idx) => {
-                        const cfg = ENTITY_CONFIG[span.label] || { color: '#93c5fa', name: span.label, icon: Shield };
-                        const IconComp = cfg.icon;
+                        const cfg = ENTITY_CONFIG[span.label] || { color: '#93c5fd', name: span.label };
                         const preview = span.text.length > 30 ? span.text.slice(0, 30) + '…' : span.text;
                         return (
                           <div key={idx} style={{
@@ -547,7 +620,7 @@ export default function Home({ lang, t, onLanguageChange }) {
                               textTransform: 'uppercase', letterSpacing: '0.06em',
                               display: 'flex', alignItems: 'center', gap: 6,
                             }}>
-                              <span className="entity-orb" style={{ background: cfg.color, color: cfg.color }} />
+                              <span className="entity-orb" style={{ background: cfg.color }} />
                               {cfg.name}
                             </span>
                           </div>
@@ -561,8 +634,15 @@ export default function Home({ lang, t, onLanguageChange }) {
               {/* RIGHT */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
                 <Card label={t.results.aiAnalysis} icon={<Sparkles size={14} strokeWidth={2.5} />}>
-                  <div style={{ fontSize: 13, color: '#94a3b8', lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>
-                    {result.analysis}
+                  <div style={{ fontSize: 13, color: '#94a3b8', lineHeight: 1.8, whiteSpace: 'pre-wrap', minHeight: 60 }}>
+                    {typedAnalysis}
+                    {!typingDone && (
+                      <span style={{
+                        display: 'inline-block', width: 2, height: 16,
+                        background: '#60a5fa', marginLeft: 3,
+                        animation: 'blink 1s infinite', verticalAlign: 'middle',
+                      }} />
+                    )}
                   </div>
                 </Card>
 
@@ -602,9 +682,7 @@ export default function Home({ lang, t, onLanguageChange }) {
   );
 }
 
-// ═══════════════════════════════════════════════════════════════
-// SUB-COMPONENTS
-// ═══════════════════════════════════════════════════════════════
+// ── Sub-components ──
 
 function Card({ label, icon, children }) {
   return (
@@ -665,17 +743,16 @@ function ActionBtn({ onClick, icon, label, primary }) {
   );
 }
 
-function EntityBadge({ label, count, color, glow, icon }) {
+function EntityBadge({ label, count, color, bg }) {
   return (
     <div className="lift" style={{
       display: 'flex', alignItems: 'center', gap: 8,
       padding: '6px 14px', borderRadius: 20,
-      background: `${color}10`, border: `1px solid ${color}20`,
+      background: bg, border: `1px solid ${color}22`,
       color, fontWeight: 600, fontSize: 12,
       cursor: 'default', transition: 'all 0.2s',
     }}>
-      <span className="entity-orb" style={{ background: color, color, boxShadow: `0 0 8px ${glow}` }} />
-      <span style={{ display: 'flex', alignItems: 'center', opacity: 0.9 }}>{icon}</span>
+      <span className="entity-orb" style={{ background: color, boxShadow: `0 0 8px ${color}50` }} />
       <span>{count}</span>
       <span style={{ opacity: 0.85 }}>{label}</span>
     </div>
@@ -698,16 +775,16 @@ function OriginalHighlight({ text, spans }) {
     <>
       {segments.map((seg, i) => {
         if (!seg.span) return <span key={i} style={{ color: '#64748b' }}>{seg.text}</span>;
-        const cfg = ENTITY_CONFIG[seg.span.label] || { color: '#93c5fa', glow: 'rgba(96,165,250,0.2)' };
+        const cfg = ENTITY_CONFIG[seg.span.label] || { color: '#93c5fa', bg: 'rgba(96,165,250,0.15)' };
         return (
           <span key={i} style={{
             background: `${cfg.color}18`, border: `1px solid ${cfg.color}40`,
-            borderRadius: 4, color: cfg.color, padding: '1px 5px', fontWeight: 600,
-            fontSize: 12, boxShadow: `0 0 12px ${cfg.glow}`,
+            borderRadius: 4, color: cfg.color, padding: '0 3px', fontWeight: 600,
+            fontSize: 12, boxShadow: `0 0 12px ${cfg.color}30`,
             transition: 'all 0.2s', cursor: 'default',
           }}
-            onMouseEnter={e => { e.currentTarget.style.background = `${cfg.color}28`; e.currentTarget.style.boxShadow = `0 0 20px ${cfg.glow}`; }}
-            onMouseLeave={e => { e.currentTarget.style.background = `${cfg.color}18`; e.currentTarget.style.boxShadow = `0 0 12px ${cfg.glow}`; }}
+            onMouseEnter={e => { e.currentTarget.style.background = `${cfg.color}28`; e.currentTarget.style.boxShadow = `0 0 20px ${cfg.color}50`; }}
+            onMouseLeave={e => { e.currentTarget.style.background = `${cfg.color}18`; e.currentTarget.style.boxShadow = `0 0 12px ${cfg.color}30`; }}
           >
             {seg.text}
           </span>
