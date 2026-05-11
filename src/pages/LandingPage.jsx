@@ -8,7 +8,7 @@ gsap.registerPlugin(ScrollTrigger);
 const t = {
   en: {
     dir: 'ltr',
-    nav: { brand: 'AxiomeVault', cta: 'Start Analyzing' },
+    nav: { brand: 'AxiomeVault', cta: 'Start Analyzing', companyCta: 'For companies' },
     hero: {
       badge: 'Privacy-First · Blockchain-Verified',
       title: ['Analyze Documents.', 'Trust the Result.'],
@@ -71,7 +71,7 @@ const t = {
   },
   fr: {
     dir: 'ltr',
-    nav: { brand: 'AxiomeVault', cta: 'Commencer' },
+    nav: { brand: 'AxiomeVault', cta: 'Commencer', companyCta: 'Espace entreprises' },
     hero: {
       badge: 'Confidentialité d\'abord · Vérifié par blockchain',
       title: ['Analysez vos documents.', 'Faites confiance au résultat.'],
@@ -134,7 +134,7 @@ const t = {
   },
   ar: {
     dir: 'rtl',
-    nav: { brand: 'AxiomeVault', cta: 'ابدأ التحليل' },
+    nav: { brand: 'AxiomeVault', cta: 'ابدأ التحليل', companyCta: 'للشركات' },
     hero: {
       badge: 'الخصوصية أولاً · موثق بالبلوكشين',
       title: ['حلل مستنداتك.', 'ثق بالنتيجة.'],
@@ -324,7 +324,7 @@ function StepRow({ n, title, desc, isLast, dir }) {
 }
 
 /* ─── Main LandingPage ─── */
-export default function LandingPage({ lang, setLang, onEnter }) {
+export default function LandingPage({ lang, setLang, onEnter, onCompanyMode }) {
   const copy = t[lang] || t.en;
   const dir = copy.dir;
 
@@ -485,6 +485,32 @@ export default function LandingPage({ lang, setLang, onEnter }) {
         <div style={styles.brand}>🔐 {copy.nav.brand}</div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
           <LangToggle lang={lang} onChange={setLang} />
+          <button
+            onClick={() => onCompanyMode?.()}
+            style={{
+              padding: '9px 16px',
+              borderRadius: 10,
+              border: '1px solid rgba(96,165,250,0.35)',
+              background: 'rgba(96,165,250,0.08)',
+              color: '#93c5fd',
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: 'pointer',
+              letterSpacing: '0.02em',
+              transition: 'all 0.2s',
+              fontFamily: 'inherit',
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.background = 'rgba(96,165,250,0.14)';
+              e.currentTarget.style.borderColor = 'rgba(96,165,250,0.6)';
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.background = 'rgba(96,165,250,0.08)';
+              e.currentTarget.style.borderColor = 'rgba(96,165,250,0.35)';
+            }}
+          >
+            {copy.nav.companyCta}
+          </button>
           <button
             onClick={onEnter}
             style={{
