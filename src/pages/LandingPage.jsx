@@ -688,34 +688,6 @@ export default function LandingPage({
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
           <LangToggle lang={lang} onChange={setLang} />
           <button
-            onClick={() => onDevDashboard?.()}
-            style={{
-              padding: "7px 14px",
-              borderRadius: 8,
-              border: "1px solid rgba(96,165,250,0.2)",
-              background: "rgba(96,165,250,0.06)",
-              color: "#475569",
-              fontSize: 11,
-              fontWeight: 600,
-              cursor: "pointer",
-              fontFamily: "inherit",
-              letterSpacing: "0.04em",
-              transition: "all 0.2s",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = "rgba(96,165,250,0.12)";
-              e.currentTarget.style.borderColor = "rgba(96,165,250,0.4)";
-              e.currentTarget.style.color = "#93c5fd";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = "rgba(96,165,250,0.06)";
-              e.currentTarget.style.borderColor = "rgba(96,165,250,0.2)";
-              e.currentTarget.style.color = "#475569";
-            }}
-          >
-            Dev
-          </button>
-          <button
             onClick={() => onCompanyMode?.()}
             style={{
               padding: "9px 16px",
