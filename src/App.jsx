@@ -2,6 +2,7 @@ import { useState } from 'react';
 import Home from './pages/Home';
 import LandingPage from './pages/LandingPage';
 import { translations, getLanguageConfig } from './i18n/translations';
+import DevDashboard from './components/DevDashboard';
 
 export default function App() {
   const [lang, setLang] = useState(
@@ -19,11 +20,14 @@ export default function App() {
 
   if (view === 'landing') {
     return (
+      <>
       <LandingPage
         lang={lang}
         setLang={handleLangChange}
         onEnter={() => setView('app')}
       />
+      <DevDashboard />
+      </>
     );
   }
 
@@ -58,6 +62,7 @@ export default function App() {
       </div>
 
       <Home lang={lang} t={t} onLanguageChange={handleLangChange} />
+      <DevDashboard />
     </div>
   );
 }
