@@ -31,6 +31,8 @@ import RedactionViewer from "../components/RedactionViewer";
 import {
   nerAnonymize as anonymize,
   getRedactionSummary,
+  preloadNerModel,
+  isModelReady,
 } from "../utils/nerAnonymizer";
 import { hashDocument } from "../utils/hasher";
 import { analyzeDocument } from "../utils/ai";
@@ -122,6 +124,8 @@ function formatNumber(n) {
 export default function Home({ lang, t, onLanguageChange }) {
   const [step, setStep] = useState(0);
   const [fileContent, setFileContent] = useState("");
+  const [modelReady, setModelReady] = useState(false);
+  const [modelProgress, setModelProgress] = useState(0);
   const [fileName, setFileName] = useState("");
   const [loading, setLoading] = useState(false);
   const [currentPhase, setCurrentPhase] = useState("");
@@ -175,7 +179,7 @@ export default function Home({ lang, t, onLanguageChange }) {
       phase = "anonymization";
       setCurrentPhase("anonymization");
       setStep(2);
-      const { anonymized, count, spans } = anonymize(fileContent);
+      const { anonymized, count, spans } = await anonymize(fileContent);
 
       phase = "hashing";
       setCurrentPhase("hashing");
@@ -225,6 +229,16 @@ export default function Home({ lang, t, onLanguageChange }) {
       setCurrentPhase("");
     }
   }, [fileContent, lang, userPrompt]);
+
+  useEffect(() => {
+    preloadNerModel((p) => {
+      if (p.progress !== undefined) setModelProgress(Math.round(p.progress));
+      if (p.status === "done" || p.status === "ready") {
+        setModelReady(true);
+        setModelProgress(100);
+      }
+    });
+  }, []);
 
   useEffect(() => {
     const handler = (e) => {
@@ -309,13 +323,13 @@ export default function Home({ lang, t, onLanguageChange }) {
   }, []);
 
   const dir = lang === "ar" ? "rtl" : "ltr";
-  const isReady = !!fileContent && !loading;
+  const isReady = !!fileContent && !loading && modelReady;
 
   const copyRedacted = async () => {
     if (!result?.anonymized) return;
     try {
       await navigator.clipboard.writeText(result.anonymized);
-    } catch {}
+    } catch { }
   };
 
   const exportReport = () => {
@@ -671,6 +685,34 @@ export default function Home({ lang, t, onLanguageChange }) {
                 <ArrowUpDown size={14} />{" "}
                 {lang === "fr" ? "Changer" : lang === "ar" ? "تغيير" : "Change"}
               </button>
+            </div>
+          )}
+
+          {!modelReady && (
+            <div style={{
+              padding: "10px 16px",
+              background: "rgba(96,165,250,0.05)",
+              border: "1px solid rgba(96,165,250,0.15)",
+              borderRadius: 10,
+              marginBottom: 12,
+              fontSize: 12,
+              color: "#60a5fa"
+            }}>
+              🧠 Loading AI model... {modelProgress}%
+              <div style={{
+                marginTop: 6,
+                height: 3,
+                background: "rgba(255,255,255,0.05)",
+                borderRadius: 2
+              }}>
+                <div style={{
+                  width: `${modelProgress}%`,
+                  height: "100%",
+                  background: "linear-gradient(90deg, #1d4ed8, #7c4fff)",
+                  borderRadius: 2,
+                  transition: "width 0.3s"
+                }} />
+              </div>
             </div>
           )}
 
