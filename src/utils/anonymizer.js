@@ -12,64 +12,17 @@ export const anonymize = (text) => {
     });
   };
 
-  // Emails
-  replace(/[\w.-]+@[\w.-]+\.\w+/g, 'EMAIL');
-
-  // Moroccan phone numbers
-  replace(/(\+212|0)[567]\d{8}/g, 'PHONE');
-
-  // Amounts in DH/MAD
-  replace(/\d[\d\s,.]*\s*(?:DH|MAD|درهم)/gi, 'AMOUNT');
-
-  // Dates
-  replace(/\b\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}\b/g, 'DATE');
-
-  // CIN numbers
-  replace(/\b[A-Z]{1,2}\d{5,6}\b/g, 'CIN');
-
-  // IBAN / bank accounts
-  replace(/\bMA\d{2}[\s\d]{20,}\b/g, 'BANK_ACCOUNT');
-
-  // Moroccan addresses — street patterns
+  replace(/[\w.+-]+@[\w.-]+\.\w+/gi, "EMAIL");
+  replace(/(?:\+212[ .-]?|0)[567]\d{8}/g, "PHONE");
+  replace(/(?:\+212[ .-]?|0)[567](?:[ .-]?\d{2}){4}/g, "PHONE");
   replace(
-    /\b(?:rue|avenue|av\.|bd|boulevard|lot|hay|quartier|n°|no\.?)\s+[^\n,]{3,40}/gi,
-    'ADDRESS'
+    /\b\d{1,3}(?:[ ,.]?\d{3})*(?:[.,]\d{1,2})?\s*(?:DH|MAD|درهم|د\.م\.?)\b/giu,
+    "AMOUNT",
   );
-
-    // Street numbers (N°17, No.5, #12 etc)
-  replace(/\b[Nn]°\s*\d+|\bNo\.?\s*\d+|#\d+/g, 'STREET_NUM');
-
-  // Neighborhood/locality names after city patterns
-  replace(
-    /\b(koullouch|hay\s+\w+|quartier\s+\w+|lotissement\s+\w+)\b/gi,
-    'LOCALITY'
-  );
-
-  // City names (common Moroccan cities)
-  replace(
-    /\b(Casablanca|Rabat|Oujda|Marrakech|Fès|Fez|Tanger|Agadir|Meknès|Meknes|Kenitra|Tétouan|Tetouan|Safi|Mohammedia|Khouribga|Beni Mellal|Nador)\b/gi,
-    'CITY'
-  );
-
-  // Full name patterns (ALL CAPS names like "QISSI AHMED")
-  replace(/\b[A-ZÀÂÉÈÊËÎÏÔÙÛÜÇ]{2,}\s+[A-ZÀÂÉÈÊËÎÏÔÙÛÜÇ]{2,}\b/g, 'FULLNAME');
-
-  // Age patterns
-  replace(/\b\d{1,2}\s*ans\b/gi, 'AGE');
-  // hello
-  // Named persons (M. / Mme. / Dr.)
-  replace(
-    /\b(?:M\.|Mr\.|Mme\.|Dr\.)\s+[A-ZÀ-Ÿ][a-zà-ÿ]+(?:\s+[A-ZÀ-Ÿ][a-zà-ÿ]+)*/g,
-    'PERSON'
-  );
+  replace(/\b\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4}\b/g, "DATE");
+  replace(/\b[A-Z]{1,2}\s*\d{5,6}\b/g, "CIN");
+  replace(/\bMA\d{2}\s*(?:\d\s*){20,26}\b/gi, "IBAN");
+  replace(/\b(?:\d{4}[ -]?){3}\d{4}\b/g, "CREDIT");
 
   return { anonymized: result, mapping, count };
-};
-
-export const deanonymize = (text, mapping) => {
-  let result = text;
-  Object.entries(mapping).forEach(([key, val]) => {
-    result = result.replaceAll(key, val);
-  });
-  return result;
 };

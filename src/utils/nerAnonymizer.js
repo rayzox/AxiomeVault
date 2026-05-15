@@ -1,35 +1,89 @@
-import nlp from "compromise";
-import compromiseDates from "compromise-dates";
-import compromiseNumbers from "compromise-numbers";
+// ═══════════════════════════════════════════════════════════════
+//  nerAnonymizer.js  —  AxiomeTrust
+//  Layer 1 : Regex — ONLY structured data (emails, IDs, phones, amounts, dates)
+//  Layer 2 : Xenova Transformers.js — multilingual BERT for NAMES, ORGS, CITIES
+//  Layer 3 : Dedup + span resolution + false-positive filtering
+// ═══════════════════════════════════════════════════════════════
 
-nlp.extend(compromiseDates);
-nlp.extend(compromiseNumbers);
+import { pipeline, env } from "@xenova/transformers";
+
+env.allowLocalModels = false;
+env.useBrowserCache = true;
+
+const MODEL_NAME = "Xenova/bert-base-multilingual-cased-ner-hrl";
+
+let _nerPipeline = null;
+let _modelReady = false;
+let _loadingPromise = null;
+
+export function isModelReady() {
+  return _modelReady;
+}
+
+async function getNerPipeline() {
+  if (_nerPipeline) return _nerPipeline;
+  if (_loadingPromise) return _loadingPromise;
+
+  _loadingPromise = pipeline("token-classification", MODEL_NAME, {
+    progress_callback: (p) => {
+      console.log("Xenova:", p.status, p.progress);
+      if (env._externalProgressCallback) {
+        env._externalProgressCallback(p);
+      }
+    },
+  }).then((pipe) => {
+    _nerPipeline = pipe;
+    _modelReady = true;
+    _loadingPromise = null;
+    return pipe;
+  });
+
+  return _loadingPromise;
+}
+
+// ── Label mapping ───────────────────────────────────────────────
+const BERT_LABEL_MAP = {
+  PER: "PERSON",
+  ORG: "ORG",
+  LOC: "LOCATION",
+};
 
 // ═══════════════════════════════
-// CONFIG
+// CONFIG — Regex patterns
+// ONLY structured data. NO bare names, NO bare cities.
 // ═══════════════════════════════
 
 const REGEX_PATTERNS = [
-  { label: "EMAIL",   regex: /[\w.+-]+@[\w.-]+\.\w+/giu,  score: 1.0 },
+  // ── Network & Contact ──
+  { label: "EMAIL", regex: /[\w.+-]+@[\w.-]+\.\w+/giu, score: 1.0 },
   {
     label: "URL",
-    regex: /https?:\/\/[^\s<>"{}|\\^`[\]]+|www\.[^\s<>"{}|\\^`[\]]+/giu,
+    regex: /https?:\/\/[^\s<<>"{}|\\^`[\]]+|www\.[^\s<<>"{}|\\^`[\]]+/giu,
     score: 1.0,
   },
   {
     label: "IP",
-    regex: /\b(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\b/g,
-    score: 1.0,
+    // Rejects 5th octet to prevent matching Moroccan phones like 07.22.33.44.55
+    regex:
+      /\b(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]\d?)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]\d?)\b(?![.\d])/g,
+    score: 0.85, // LOWER than PHONE so phone always wins on overlap
   },
-  { label: "CREDIT",   regex: /\b(?:\d{4}[ -]?){3}\d{4}\b/g,  score: 1.0  },
-  { label: "PASSPORT", regex: /\b[A-Z]{2}\d{7,9}\b/g,          score: 0.95 },
-  { label: "CIN",      regex: /\b[A-Z]{1,2}\d{5,6}\b/g,        score: 0.95 },
 
-  // 🇲🇦 Moroccan identifiers
-  { label: "ICE",  regex: /\b\d{15}\b/g, score: 0.98 },
+  // ── Financial (run before PHONE/CREDIT to avoid collision) ──
+  // Moroccan IBAN
+  { label: "IBAN", regex: /\bMA\d{2}\s*(?:\d\s*){20,26}\b/gi, score: 0.99 },
+  { label: "IBAN", regex: /\bMA\d{24,30}\b/g, score: 0.99 },
+  // Credit cards
+  { label: "CREDIT", regex: /\b(?:\d{4}[ -]?){3}\d{4}\b/g, score: 1.0 },
+
+  // ── Moroccan Identifiers ──
+  { label: "PASSPORT", regex: /\b[A-Z]{2}\d{7,9}\b/g, score: 0.95 },
+  { label: "CIN", regex: /\b[A-Z]{1,2}\s*\d{5,6}\b/g, score: 0.95 },
+  { label: "ICE", regex: /\b\d{15}\b/g, score: 0.98 },
   {
     label: "RC",
-    regex: /\b(?:RC|R\.C\.|Registre\s+de\s+Commerce)\s*[:\-]?\s*\d{1,8}(?:\/\d{1,4})?\b/giu,
+    regex:
+      /\b(?:RC|R\.C\.|Registre\s+de\s+Commerce)\s*[:\-]?\s*\d{1,8}(?:\/\d{1,4})?\b/giu,
     score: 0.95,
   },
   {
@@ -43,83 +97,121 @@ const REGEX_PATTERNS = [
     score: 0.95,
   },
 
-  // Phones
-  { label: "PHONE", regex: /(?:\+212[ .-]?|0)[567](?:[ .-]?\d{2}){4}/g,          score: 0.98 },
-  { label: "PHONE", regex: /(?:\+212|[٠0])[٥٦٧567](?:[ .-]?[٠-٩0-9]{2}){4}/gu,  score: 0.98 },
+  // ── Phones ──
+  // Moroccan mobile
+  { label: "PHONE", regex: /(?:\+212[ .-]?|0)[567]\d{8}\b/g, score: 0.98 },
+  // Moroccan with separators: 06-23-45-67-89 or 07.22.33.44.55
+  {
+    label: "PHONE",
+    regex: /(?:\+212[ .-]?|0)[567](?:[ .-]?\d{2}){4}\b/g,
+    score: 0.98,
+  },
+  // Generic international (lower score)
+  {
+    label: "PHONE",
+    regex: /\+\d{1,3}[ .-]?(?:\d{1,4}[ .-]?){2,5}\d{1,4}\b/g,
+    score: 0.75,
+  },
 
-  // Money (numeric)
+  // ── Money ──
   {
     label: "AMOUNT",
-    regex: /\b\d{1,3}(?:[ ,.]?\d{3})*(?:[.,]\d{1,2})?\s*(?:DH|MAD|درهم|د\.م\.?)\b/giu,
+    regex:
+      /\b\d{1,3}(?:[ ,.]?\d{3})*(?:[.,]\d{1,2})?\s*(?:DH|MAD|درهم|د\.م\.?)\b/giu,
     score: 0.95,
   },
-  {
-    label: "AMOUNT",
-    regex: /\b[٠-٩0-9]{1,3}(?:[ ,.]?[٠-٩0-9]{3})*(?:[.,][٠-٩0-9]{1,2})?\s*(?:DH|MAD|درهم|د\.م\.?)\b/giu,
-    score: 0.95,
-  },
-
-  // Money (written) — max 5 words before "dirhams" to avoid swallowing sentences
+  // Amounts in words (French)
   {
     label: "AMOUNT_WORDS",
     regex: /\b(?:[a-zà-ÿ]+(?:[-\s][a-zà-ÿ]+){0,4})\s+(?:dirhams?)\b/giu,
     score: 0.9,
   },
+  // Amounts in words (Arabic)
   {
     label: "AMOUNT_WORDS",
-    regex: /\b[\u0600-\u06FF\s-]{3,40}\s+(?:درهم|دراهم)\b/gu,
+    regex: /(?:^|\s)(?:[\u0600-\u06FF\s-]{3,40})\s+(?:درهم|دراهم)\b/gu,
     score: 0.9,
   },
 
-  // Dates (numeric)
-  { label: "DATE", regex: /\b\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4}\b/g,                  score: 0.9 },
-  { label: "DATE", regex: /\b[٠-٩0-9]{1,2}[\/\-.][٠-٩0-9]{1,2}[\/\-.][٠-٩0-9]{2,4}\b/gu, score: 0.9 },
+  // ── Dates ──
+  {
+    label: "DATE",
+    regex: /\b\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4}\b/g,
+    score: 0.9,
+  },
+  // ISO 8601
+  {
+    label: "DATE",
+    regex:
+      /\b\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}:\d{2}(?:Z|[+-]\d{2}:?\d{2})?)?\b/g,
+    score: 0.9,
+  },
 
-  // Addresses (French)
+  // ── Addresses (French) — strict keyword prefix ──
   {
     label: "ADDRESS",
-    regex: /\b(?:rue|avenue|av\.|bd|boulevard|lot|hay|quartier|n°|nº|no\.?|impasse|allée|passage|chemin|place)\s+[^\n,]{3,60}?(?=\s*[,\n]|$)/giu,
+    regex:
+      /\b(?:rue|avenue|av\.|bd|boulevard|lot|hay|quartier|impasse|allée|passage|chemin|place|villa|résidence|z\.?i\.?|zone\s+industrielle|p\.?\s*o\.?\s*box)\s+[^\n,]{2,40}?(?=\s*[,\n]|$)/giu,
     score: 0.85,
   },
   // Addresses (Arabic)
   {
     label: "ADDRESS",
-    regex: /\b(?:شارع|زنقة|نهج|حي|عمارة|شقة|ساحة|ملك|مقر|درب|سوق|مجمع|فيلا|قصر)\s+[\u0600-\u06FF0-9٠-٩\s]{3,60}?(?=\s*[،,\n]|$)/gu,
+    regex:
+      /(?:^|\s)(?:شارع|زنقة|نهج|حي|عمارة|شقة|ساحة|ملك|مقر|درب|سوق|مجمع|فيلا|قصر|طريق|منطقة\s+صناعية)\s+[\u0600-\u06FF0-9\s]{3,60}?(?=\s*[،,\n]|$)/gu,
     score: 0.85,
   },
 
-  // Person with honorific (French/English)
+  // Street numbers
   {
-    label: "PERSON",
-    regex: /(?:M\.|Mme|Mlle|Dr|Pr|Mr|Mrs|Ms|Prof|Me)\.?\s+[A-ZÀ-ÖØ-Ý]{2,}(?:\s+[A-ZÀ-ÖØ-Ý]{2,}){1,3}\b/giu,
-    score: 0.86,
+    label: "STREET_NUM",
+    regex: /\b[Nn][°oº]\.?\s*\d+(?:\s*(?:bis|ter|quater))?/g,
+    score: 0.85,
   },
-  // Person with honorific (Arabic)
+
+  // ── Moroccan Cities — SAFE because of \b(?:...)\b group syntax
+  // Previous bug: \bCasablanca|Rabat|Sale only anchored Casablanca.
+  // Now ALL are anchored with \b(?: ... )\b.
+  {
+    label: "CITY",
+    regex:
+      /\b(?:Casablanca|Rabat|Oujda|Marrakech|Marrakesh|Fès|Fez|Tanger|Tangier|Agadir|Meknès|Meknes|Kenitra|Kénitra|Tétouan|Tetouan|Safi|Mohammedia|Khouribga|Beni\s+Mellal|Nador|El\s+Jadida|Temara|Sale|Salé|Khemisset|Settat|Berrechid|Laayoune|Dakhla)\b/giu,
+    score: 0.9,
+  },
+
+  // ── Persons — ONLY with explicit honorific
+  // (?<<!\S) requires whitespace or start before honorific — prevents "2ème" → "me"
   {
     label: "PERSON",
-    regex: /(?:السيد|السيدة|الأستاذ|الأستاذة|الدكتور|الدكتورة|المهندس|المهندسة|أستاذ|دكتور|مهندس|الأخ|الأخت)\s+[\u0600-\u06FF]{2,}(?:\s+[\u0600-\u06FF]{2,}){0,3}/gu,
+    regex:
+      /(?<!\S)(?:M\.|Mme\.?|Mlle\.?|Dr\.|Pr\.|Prof\.|Mr\.|Mrs\.|Ms\.|Me\.|Maître|Maitre|Madame|Mademoiselle)\s+(?:[A-Za-zÀ-ÖØ-öø-ÿ]+(?:[-\s][A-Za-zÀ-ÖØ-öø-ÿ]+)*)\b/giu,
     score: 0.88,
   },
+  // Inline titles
+  {
+    label: "PERSON",
+    regex:
+      /\b(?:L'ingénieur|Le\s+sieur|La\s+dame)\s+[A-Za-zÀ-ÖØ-öø-ÿ]+(?:[-\s][A-Za-zÀ-ÖØ-öø-ÿ]+)*\b/giu,
+    score: 0.88,
+  },
+  // Arabic honorific + name
+  {
+    label: "PERSON",
+    regex:
+      /(?:^|\s)(?:السيد|السيدة|الأستاذ|الأستاذة|الدكتور|الدكتورة|المهندس|المهندسة|أستاذ|دكتور|مهندس|الأخ|الأخت)\s+[\u0600-\u06FF]{2,}(?:\s+[\u0600-\u06FF]{2,}){0,3}/gu,
+    score: 0.88,
+  },
+
+  // ── Age ──
+  { label: "AGE", regex: /\b\d{1,2}\s*ans\b/giu, score: 0.8 },
 ];
 
-// NOTE: DATE and AMOUNT intentionally removed from NLP_MAP.
-// Compromise returns overly broad spans like
-// "montant du contrat est 50000 DH" which swallows normal French words.
-// Regex handles dates and amounts perfectly without NLP help.
-const NLP_MAP = [
-  { fn: "people",        label: "PERSON",   score: 0.72, maxLen: 60 },
-  { fn: "organizations", label: "ORG",      score: 0.70, maxLen: 80 },
-  { fn: "places",        label: "LOCATION", score: 0.70, maxLen: 40 },
-];
-
-const CHUNK_SIZE    = 5000;
+const CHUNK_SIZE = 5000;
 const CHUNK_OVERLAP = 250;
 
 // ═══════════════════════════════
 // HELPERS
 // ═══════════════════════════════
-
-const isArabic = (text) => /[\u0600-\u06FF]/.test(text);
 
 const normalize = (s) =>
   String(s)
@@ -137,11 +229,85 @@ function overlaps(a, b) {
   return a.start < b.end && a.end > b.start;
 }
 
+function overlapsAny(start, end, ranges) {
+  return ranges.some((r) => start < r.end && end > r.start);
+}
+
 function scoreSpan(s) {
-  const base =
-    s.source === "regex" ? 3 :
-    s.source === "nlp"   ? 1 : 2;
+  const base = s.source === "regex" ? 3 : s.source === "bert" ? 2 : 1;
   return (s.score || 0) + base + (s.end - s.start) / 1000;
+}
+
+// ── Robust BERT token-to-text span finder ──────────────────────
+function findEntitySpan(text, words, usedRanges) {
+  // Reconstruct text from WordPiece tokens
+  // ## prefix = continuation of previous word (no space)
+  // no ##     = new word (space before, unless punctuation)
+  const reconstructed = words
+    .map((w, i) => {
+      if (i === 0) return w;
+      if (w.startsWith("##")) return w.slice(2);
+      // Don't add space before certain punctuation
+      if (/^[.,;:!?)\]»\-]/.test(w)) return w;
+      return " " + w;
+    })
+    .join("")
+    .replace(/-\s+/g, "-") // "Jean - François" → "Jean-François"
+    .replace(/\s+-/g, "-") // "word -" → "word-"
+    .trim();
+
+  if (!reconstructed) return null;
+
+  // 1. Exact match
+  let idx = text.indexOf(reconstructed);
+  if (idx !== -1 && !overlapsAny(idx, idx + reconstructed.length, usedRanges)) {
+    return { start: idx, end: idx + reconstructed.length };
+  }
+
+  // 2. Case-insensitive match
+  const lowerText = text.toLowerCase();
+  const lowerRecon = reconstructed.toLowerCase();
+  idx = lowerText.indexOf(lowerRecon);
+  while (idx !== -1) {
+    if (!overlapsAny(idx, idx + reconstructed.length, usedRanges)) {
+      return { start: idx, end: idx + reconstructed.length };
+    }
+    idx = lowerText.indexOf(lowerRecon, idx + 1);
+  }
+
+  // 3. Fuzzy word-by-word match (handles spacing/punctuation differences)
+  const searchWords = reconstructed
+    .split(/\s+/)
+    .filter((w) => w.length > 0 && /[a-zA-ZÀ-ÖØ-öø-ÿ0-9\u0600-\u06FF]/.test(w));
+
+  if (searchWords.length >= 2) {
+    const first = searchWords[0].toLowerCase();
+    let pos = lowerText.indexOf(first);
+
+    while (pos !== -1) {
+      let end = pos + first.length;
+      let matched = true;
+
+      for (let i = 1; i < searchWords.length; i++) {
+        const w = searchWords[i].toLowerCase();
+        const slice = text.slice(end, end + 25).toLowerCase();
+        const wPos = slice.indexOf(w);
+        if (wPos === -1) {
+          matched = false;
+          break;
+        }
+        end += wPos + w.length;
+      }
+
+      if (matched && !overlapsAny(pos, end, usedRanges)) {
+        return { start: pos, end };
+      }
+
+      pos = lowerText.indexOf(first, pos + 1);
+    }
+  }
+
+  return null;
 }
 
 // ═══════════════════════════════
@@ -150,7 +316,7 @@ function scoreSpan(s) {
 
 function deduplicateSpans(spans) {
   const seen = new Set();
-  const out  = [];
+  const out = [];
   for (const s of spans) {
     const key = `${s.start}:${s.end}:${s.label}:${normalize(s.text)}`;
     if (seen.has(key)) continue;
@@ -165,35 +331,56 @@ function deduplicateSpans(spans) {
 // ═══════════════════════════════
 
 function expandWithHonorific(text, span) {
-  if (span.label !== "PERSON") return span;
-  const HONORIFICS = /(?:M\.|Mme|Mlle|Dr|Pr|Mr|Mrs|Ms|Prof|Me)\.?\s+$/i;
+  if (!["PERSON", "PER"].includes(span.label)) return span;
+
   const before = text.slice(0, span.start);
-  const match  = before.match(HONORIFICS);
-  if (!match) return span;
-  const newStart = span.start - match[0].length;
-  return {
-    ...span,
-    start: newStart,
-    text:  text.slice(newStart, span.end),
-  };
+
+  // French/English honorifics
+  const match = before.match(
+    /(?:M\.|Mme\.?|Mlle\.?|Dr\.|Pr\.|Prof\.|Mr\.|Mrs\.|Ms\.|Me\.|Maître|Maitre|Madame|Mademoiselle|L'ingénieur|Le\s+sieur|La\s+dame)\s+$/iu,
+  );
+  if (match) {
+    const newStart = span.start - match[0].length;
+    return { ...span, start: newStart, text: text.slice(newStart, span.end) };
+  }
+
+  // Arabic honorifics
+  const arabMatch = before.match(
+    /(?:السيد|السيدة|الأستاذ|الأستاذة|الدكتور|الدكتورة|المهندس|المهندسة|أستاذ|دكتور|مهندس|الأخ|الأخت)\s+$/u,
+  );
+  if (arabMatch) {
+    const newStart = span.start - arabMatch[0].length;
+    return { ...span, start: newStart, text: text.slice(newStart, span.end) };
+  }
+
+  return span;
 }
 
 // ═══════════════════════════════
-// EXTRACTION
+// LAYER 1 — REGEX EXTRACTION
 // ═══════════════════════════════
 
 function extractRegex(text, offset = 0) {
   const out = [];
+  // Normalize Arabic digits + separators BEFORE running regex.
+  // Length is preserved 1:1 so indices map back to original text.
+  const normalizedText = text
+    .normalize("NFKC")
+    .replace(/[٠-٩]/g, (d) => "0123456789"["٠١٢٣٤٥٦٧٨٩".indexOf(d)])
+    .replace(/\u066B/g, ".") // Arabic decimal separator ٫ → .
+    .replace(/\u066C/g, ",") // Arabic thousands separator ٬ → ,
+    .replace(/ٵ/g, "0"); // Common misrendering of Arabic zero
+
   for (const { label, regex, score } of REGEX_PATTERNS) {
     const r = cloneRegex(regex);
     r.lastIndex = 0;
     let m;
-    while ((m = r.exec(text)) !== null) {
+    while ((m = r.exec(normalizedText)) !== null) {
       if (!m[0]) continue;
       out.push({
-        start:  offset + m.index,
-        end:    offset + m.index + m[0].length,
-        text:   m[0],
+        start: offset + m.index,
+        end: offset + m.index + m[0].length,
+        text: text.slice(m.index, m.index + m[0].length),
         label,
         score,
         source: "regex",
@@ -204,66 +391,71 @@ function extractRegex(text, offset = 0) {
   return out;
 }
 
-function extractNLP(text, offset = 0) {
-  const out        = [];
-  const usedRanges = [];
+// ═══════════════════════════════
+// LAYER 2 — XENOVA BERT NER
+// ═══════════════════════════════
 
-  // Compromise is weak on Arabic-heavy text — skip it
-  if (
-    isArabic(text) &&
-    (text.match(/[\u0600-\u06FF]/g)?.length ?? 0) / Math.max(1, text.length) > 0.25
-  ) {
-    return out;
-  }
+async function extractBERT(text, offset = 0) {
+  const out = [];
+  try {
+    const ner = await getNerPipeline();
+    const results = await ner(text, { ignore_labels: [] });
 
-  const lowerText = text.toLowerCase();
+    // Group consecutive B-/I- tokens into entity spans
+    let current = null;
 
-  for (const { fn, label, score, maxLen } of NLP_MAP) {
-    const matches = nlp(text)[fn]().json();
+    for (const token of results) {
+      const entity = token.entity ?? "";
+      const isB = entity.startsWith("B-");
+      const isI = entity.startsWith("I-");
+      const tag = entity.replace(/^[BI]-/, "");
+      const label = BERT_LABEL_MAP[tag];
 
-    for (const match of matches) {
-      const val = match?.text?.trim();
-      if (!val) continue;
-
-      // Reject spans that are too long — these are false positives
-      if (maxLen && val.length > maxLen) continue;
-
-      // For ORG: require multi-word OR all-caps
-      // prevents "telephone", "contrat", "montant" being flagged as orgs
-      if (label === "ORG") {
-        const isMultiWord = val.includes(" ");
-        const isAllCaps   = val === val.toUpperCase() && val.length > 3;
-        if (!isMultiWord && !isAllCaps) continue;
-      }
-
-      const lowerVal   = val.toLowerCase();
-      let   searchFrom = 0;
-
-      while (searchFrom < text.length) {
-        const idx = lowerText.indexOf(lowerVal, searchFrom);
-        if (idx === -1) break;
-
-        const candidate = { start: idx, end: idx + val.length };
-
-        if (!usedRanges.some((r) => overlaps(candidate, r))) {
-          const span = {
-            start:  offset + idx,
-            end:    offset + idx + val.length,
-            text:   text.slice(idx, idx + val.length),
-            label,
-            score,
-            source: "nlp",
-          };
-          out.push(span);
-          usedRanges.push(candidate);
+      if (isB && label) {
+        if (current) out.push(current);
+        current = {
+          label,
+          score: token.score,
+          words: [token.word],
+        };
+      } else if (isI && label && current && current.label === label) {
+        current.words.push(token.word);
+        current.score = Math.min(current.score, token.score);
+      } else {
+        if (current) {
+          out.push(current);
+          current = null;
         }
-
-        searchFrom = idx + 1;
       }
     }
-  }
+    if (current) out.push(current);
 
-  return out;
+    // Find each entity in the original text using robust matching
+    const usedRanges = [];
+    const finalSpans = [];
+
+    for (const entity of out) {
+      if (entity.score < 0.6) continue; // Lowered threshold for BERT
+
+      const span = findEntitySpan(text, entity.words, usedRanges);
+      if (!span) continue;
+
+      usedRanges.push(span);
+      finalSpans.push({
+        start: offset + span.start,
+        end: offset + span.end,
+        text: text.slice(span.start, span.end),
+        label: entity.label,
+        score: entity.score,
+        source: "bert",
+      });
+    }
+
+    return finalSpans;
+  } catch (err) {
+    console.warn("[AxiomeTrust] Xenova NER failed on chunk:", err?.message);
+    return [];
+  }
 }
 
 // ═══════════════════════════════
@@ -272,17 +464,14 @@ function extractNLP(text, offset = 0) {
 
 function chunk(text) {
   if (text.length <= CHUNK_SIZE) return [{ text, offset: 0 }];
-
   const res = [];
-  let   i   = 0;
-
+  let i = 0;
   while (i < text.length) {
     const end = Math.min(text.length, i + CHUNK_SIZE);
     res.push({ text: text.slice(i, end), offset: i });
-    if (end === text.length) break; // prevents infinite loop
+    if (end === text.length) break;
     i = end - CHUNK_OVERLAP;
   }
-
   return res;
 }
 
@@ -295,30 +484,30 @@ function resolveSpans(spans) {
     const sa = scoreSpan(a);
     const sb = scoreSpan(b);
     if (sb !== sa) return sb - sa;
-    return a.start - b.start;
+    return b.end - b.start - (a.end - a.start); // larger span wins tie
   });
 
   const accepted = [];
 
   for (const s of sorted) {
-    if (s.start >= s.end) continue;
-    if (!s.text?.trim())  continue;
+    if (s.start >= s.end || !s.text?.trim()) continue;
 
     let replaced = false;
-
     for (let i = 0; i < accepted.length; i++) {
       const k = accepted[i];
       if (!overlaps(s, k)) continue;
 
-      if (
-        scoreSpan(s) > scoreSpan(k) &&
-        s.start <= k.start &&
-        s.end   >= k.end
-      ) {
+      const sScore = scoreSpan(s);
+      const kScore = scoreSpan(k);
+      const sLen = s.end - s.start;
+      const kLen = k.end - k.start;
+
+      // Replace if higher score AND (larger/equal span OR significantly higher score)
+      if (sScore > kScore && (sLen >= kLen || sScore > kScore + 1.0)) {
         accepted[i] = s;
-        replaced     = true;
+        replaced = true;
       }
-      break; // break inner loop only
+      break;
     }
 
     if (!replaced && !accepted.some((k) => overlaps(s, k))) {
@@ -330,22 +519,58 @@ function resolveSpans(spans) {
 }
 
 // ═══════════════════════════════
+// FALSE POSITIVE FILTER
+// ═══════════════════════════════
+
+const FALSE_POSITIVE_RULES = [
+  {
+    label: "RC",
+    contextPattern:
+      /radio\s+commande|commande\s+radio|régime|réglementaire|circuit|voiture|voie|racing|remote\s+control/i,
+    window: 35,
+  },
+  {
+    label: "IF",
+    contextPattern:
+      /interface|si\s+alors|condition|instruction|protocole|réseau|fichier|défini|définition|statement/i,
+    window: 35,
+  },
+  {
+    label: "ICE",
+    contextPattern:
+      /climatisation|voiture|glace|refrigeration|in-car|entertainment|moteur|pompe|système/i,
+    window: 35,
+  },
+];
+
+function filterFalsePositives(spans, text) {
+  return spans.filter((s) => {
+    const rule = FALSE_POSITIVE_RULES.find((r) => r.label === s.label);
+    if (!rule) return true;
+    const before = text.slice(Math.max(0, s.start - rule.window), s.start);
+    const after = text.slice(s.end, s.end + rule.window);
+    const context = `${before} ${after}`.toLowerCase();
+    return !rule.contextPattern.test(context);
+  });
+}
+
+// ═══════════════════════════════
 // BUILD OUTPUT
 // ═══════════════════════════════
 
 function build(text, spans) {
-  let out    = "";
+  let out = "";
   let cursor = 0;
-  let id     = 0;
-  const map  = {};
+  let id = 0;
+  const map = {};
 
   for (const s of spans) {
     if (s.start < cursor) continue;
     out += text.slice(cursor, s.start);
-    const key  = `[${s.label}_${++id}]`;
-    map[key]   = s.text;
-    out       += key;
-    cursor     = s.end;
+    const key = `[${s.label}_${++id}]`;
+    map[key] = s.text;
+    out += key;
+    cursor = s.end;
   }
 
   out += text.slice(cursor);
@@ -356,21 +581,25 @@ function build(text, spans) {
 // PUBLIC API
 // ═══════════════════════════════
 
-export function nerAnonymize(text) {
+export async function nerAnonymize(text) {
   if (!text || typeof text !== "string") {
     return { anonymized: "", mapping: {}, count: 0, spans: [] };
   }
 
   const chunks = chunk(text);
-  let   spans  = [];
+  let spans = [];
 
   for (const c of chunks) {
-    spans.push(...extractRegex(c.text, c.offset));
-    spans.push(...extractNLP(c.text,   c.offset));
+    const [regexSpans, bertSpans] = await Promise.all([
+      extractRegex(c.text, c.offset),
+      extractBERT(c.text, c.offset),
+    ]);
+    spans.push(...regexSpans, ...bertSpans);
   }
 
   spans = deduplicateSpans(spans).map((s) => expandWithHonorific(text, s));
   spans = resolveSpans(spans);
+  spans = filterFalsePositives(spans, text);
 
   const { anonymized, mapping } = build(text, spans);
 
@@ -380,6 +609,13 @@ export function nerAnonymize(text) {
     count: Object.keys(mapping).length,
     spans,
   };
+}
+
+export async function preloadNerModel(onProgress) {
+  if (onProgress) {
+    env._externalProgressCallback = onProgress;
+  }
+  await getNerPipeline();
 }
 
 export function nerDeanonymize(text, mapping) {
